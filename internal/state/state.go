@@ -55,6 +55,34 @@ func Load(gitDir string) (Marker, bool, error) {
 	return m, true, nil
 }
 
+// markerStat is a projection of Marker holding only the cached mtimes. Decoding
+// into it makes encoding/json skip the (potentially large) base object without
+// allocating the map or its strings.
+type markerStat struct {
+	LocalMTime int64 `json:"local_mtime"`
+	VaultMTime int64 `json:"vault_mtime"`
+}
+
+// LoadStat reads only the cached mtimes from a worktree's marker, skipping the
+// base snapshot — the cheap read for the mtime fast path (D5/D7), where the base
+// is never consulted. ok is false (with a nil error) when no marker exists yet.
+// Callers that need the base (an mtime miss → 3-way compare) must fall back to
+// Load.
+func LoadStat(gitDir string) (localMTime, vaultMTime int64, ok bool, err error) {
+	data, err := os.ReadFile(Path(gitDir))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return 0, 0, false, nil
+		}
+		return 0, 0, false, fmt.Errorf("state: read: %w", err)
+	}
+	var s markerStat
+	if err := json.Unmarshal(data, &s); err != nil {
+		return 0, 0, false, fmt.Errorf("state: %s: %w", Path(gitDir), err)
+	}
+	return s.LocalMTime, s.VaultMTime, true, nil
+}
+
 // Save atomically writes the marker for a worktree gitdir.
 func Save(gitDir string, m Marker) error {
 	data, err := json.MarshalIndent(m, "", "  ")
