@@ -193,3 +193,12 @@ Still open:
   is process spawns (`fork`+`exec`), not the queries. The earlier "not the time
   for perf" stance held until a real per-invocation cost (per-prompt use)
   justified this narrow, measured optimization.
+- **2026-07-12 · Install ergonomics + porcelain.** Added `check --porcelain`
+  (bare state token, for scripts/prompt segments). Made the tool `go install`-
+  able with a real version: `buildinfo.Version` falls back to the embedded module
+  version; `make build`/`install` stamp it from `git describe`. README documents
+  `go install github.com/carvalhosauro/envkeep/cmd/envkeep@latest` (needs the repo
+  published to GitHub). Dropped the Option-B starship inline segment for now
+  (headless render was flaky to verify; the cd-hook covers the need) — kept the
+  cd hook in the user's zsh. Fixed a `.gitignore` bug where the bare `envkeep`
+  pattern shadowed the `cmd/envkeep/` source dir.
