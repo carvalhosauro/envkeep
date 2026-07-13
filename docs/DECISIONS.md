@@ -1,0 +1,296 @@
+# DECISIONS.md — why envkeep is shaped this way
+
+This is the reasoning record. Each entry states the **decision**, the **why**,
+the **alternatives rejected**, and a concrete **reconsider-trigger** — the
+specific condition that would justify revisiting it. If no trigger has fired,
+the decision stands; treat a fenced-off option as a decision, not an oversight.
+
+Format per entry: Decision · Why · Rejected · Reconsider-trigger · Status.
+
+Statuses: `ACCEPTED` (in force), `SUPERSEDED` (replaced — kept for history),
+`REVISED` (changed mid-design — the journey is recorded on purpose).
+
+---
+
+## D1 — Language: Go
+
+**Decision:** Build in Go.
+**Why:** Single static binary, trivial distribution, first-class subprocess
+handling for shelling out to `git`, cross-platform.
+**Rejected:** Shell script (too fragile for parsing/merge/conflict logic);
+Rust (fine, but Go's simpler subprocess + string handling wins for a tool that
+is mostly "shell out to git and diff text files").
+**Reconsider-trigger:** None foreseen.
+**Status:** ACCEPTED.
+
+## D2 — Vault is a flat `KEY=VALUE` file, not a database
+
+**Decision:** Shared env values live in a flat file inside the git common dir.
+**Why:** Real volume is tiny (a handful of worktrees, a few keys). No
+performance need for a relational store. A flat file is inspectable directly
+with `cat` / `git diff` and adds no runtime dependency to the binary.
+**Rejected:** SQLite or any embedded DB — solves a scale/index problem this
+project does not have in v1.
+**Reconsider-trigger:** Scope changes from "per repo" to "every repo I have
+ever used" (e.g. `envkeep status --all`), which becomes a genuine cross-repo
+index problem; **or** we want an auditable history of every push/pull, not just
+current state. Neither is a v1 need.
+**Status:** ACCEPTED.
+
+## D3 — State lives in the git common dir; no external registry
+
+**Decision:** Vault and config live under `<git-common-dir>/envkeep/`.
+**Why:** Every worktree of a repo shares one common dir, so it is the natural
+shared-truth location with zero external coordination. Bonus safety: anything
+inside `.git/` is **never tracked by git**, so the vault can't be accidentally
+committed.
+**Rejected:** A central registry in `$HOME` or `$XDG_CONFIG_HOME` keyed by repo
+path (needs a path index, goes stale when worktrees/repos move).
+**Reconsider-trigger:** Cross-repo scope (see D2 trigger).
+**Status:** ACCEPTED.
+
+## D4 — No persisted worktree path index; query git live
+
+**Decision:** Get the worktree list from `git worktree list --porcelain` every
+time it is needed.
+**Why:** Fast enough, and never stale. A saved index diverges the moment a
+worktree is removed manually.
+**Rejected:** Caching the worktree list to disk.
+**Reconsider-trigger:** Measured performance problem from repeatedly shelling
+out (not expected at this scale).
+**Status:** ACCEPTED.
+
+## D5 — Per-worktree base marker (sidecar) for conflict detection AND cache
+
+**Decision:** Each worktree keeps a tiny state file recording the vault content
+hash at its last sync, plus the last-seen mtimes of the local `.env` and the
+vault. Stored in the **per-worktree gitdir** (`git rev-parse --git-dir` →
+`.git/worktrees/<name>/envkeep.base` for linked worktrees, `.git/envkeep.base`
+for the main one).
+**Why:** "Synced vs divergent" is not decidable from two files alone — you need
+a **base** (what the vault looked like at this worktree's last sync) to run a
+3-way comparison, exactly like git. The same file doubles as the cache: compare
+current mtimes to the stored ones and skip parsing entirely when nothing moved.
+**Rejected:** Deriving state from only local `.env` + vault (can't tell who
+diverged, so can't distinguish "I'm ahead" from "there's a conflict").
+**Reconsider-trigger:** None — this is load-bearing for both conflict detection
+and cache.
+**Status:** REVISED. *History (kept on purpose): during design this sidecar was
+first proposed, then dropped as premature ("status can just parse both files
+every time"), then reinstated once conflict detection was taken seriously — a
+3-way merge structurally requires a base. The drop was wrong; this is the
+correction. Recorded so no future session re-drops it for the same wrong
+reason.*
+
+## D6 — CLI framework: stdlib `flag` + manual subcommand dispatch
+
+**Decision:** Use the standard library, one `FlagSet` per subcommand.
+**Why:** ~5 subcommands. Matches the minimal-dependency, inspectable ethos of
+the whole project. No third-party dep for something this small.
+**Rejected:** `cobra` (earns its keep at 10+ commands or when you want it to
+generate shell completions itself — heavy here); `urfave/cli` (lighter than
+cobra, still an unneeded dep).
+**Reconsider-trigger:** Command count grows past ~10, **or** we want the binary
+to emit its own bash/zsh completions → adopt `cobra` then.
+**Status:** ACCEPTED.
+
+## D7 — Shell hook: `chpwd` / cd-trap by default, with mtime guard
+
+**Decision:** Default hook fires on directory change (zsh `chpwd`, bash cd
+wrapper). A shell-side mtime guard skips spawning the binary when `.env` hasn't
+changed. `precmd`/`PROMPT_COMMAND` (every-prompt) offered as opt-in. Git
+`post-checkout` rejected.
+**Why:** The core pain is "forgot to propagate to the *other* worktrees." That
+drift matters exactly when you `cd` into the other worktree — which is when
+`chpwd` fires. Firing every prompt adds overhead; only the opt-in in-place-edit
+crowd needs it. `post-checkout` fires only on checkout/worktree-add — it misses
+both `cd` and in-place edits, so it can't cover the daily case.
+**Rejected:** `direnv` as the default (adds a dependency and an `.envrc` per
+worktree; fine as a power-user path, not the baseline).
+**Reconsider-trigger:** If the hook proves insufficient in practice — e.g. IDE
+terminals that don't source `.zshrc` leave you in stale state often — that is
+the signal (and only then) to reconsider a daemon/watch mode (see D14).
+**Status:** ACCEPTED.
+
+## D8 — `push` is a union merge by default, not a replace
+
+**Decision:** `push` merges local `.env` into the vault. Local values win on
+shared keys; keys present in the vault but absent locally are **kept**, not
+deleted. Deletion only via explicit `--prune` or interactive confirm.
+**Why:** Directly kills the stated fear: worktree B pushing without `KEY_X`
+must not wipe `KEY_X` that worktree A added to the vault. Replace-semantics
+would clobber it; union-semantics can't. Solves the problem with semantics
+rather than relying on the user to catch it in a diff review.
+**Rejected:** Replace-then-review (safe only if the user reads every diff every
+time — fragile).
+**Reconsider-trigger:** None foreseen; `--prune` covers deliberate deletion.
+**Status:** ACCEPTED.
+
+## D9 — Per-worktree override file (gitignored); composition rule
+
+**Decision:** A gitignored per-worktree override file holds values that must
+differ between worktrees (e.g. dev-server `PORT`). Override keys are **stripped
+before push** (never pollute the shared vault) and **re-applied after pull**.
+The one composition rule everything obeys: **effective `.env` = vault ⊕
+override**.
+**Why:** Running several worktrees in parallel needs per-worktree ports without
+those leaking into shared truth. A single, explicit composition rule keeps push
+and pull symmetric and predictable.
+**Rejected:** Marking keys as "local" inside the shared vault (pollutes shared
+truth; ambiguous across worktrees).
+**Reconsider-trigger:** None foreseen.
+**Status:** ACCEPTED.
+
+## D10 — Name: `envkeep`
+
+**Decision:** The project/binary is `envkeep`.
+**Why:** Names the durable core (something that *keeps* env), not the v1 trick.
+Room to grow toward a robust vault-like tool without the name fighting the
+scope.
+**Rejected:** `envwt` (env + worktree) — used in early drafts, then rejected:
+it cages the name to the worktree feature. Worktree is the v1 *selling* feature,
+but the *name* should outlive worktree-only scope. Also considered `envault`,
+`enclave`, `envkeep` (chosen), `parcel`.
+**Reconsider-trigger:** Name collision on a distribution channel (npm / gh /
+brew / domain) discovered before first release → pick among the alternatives.
+**Status:** ACCEPTED. *Verify availability on npm/gh/brew before first public
+release.*
+
+## D11 — Preserve key order and comments when writing `.env`
+
+**Decision:** `pull` parses `.env` to an ordered structure and patches values
+in place, preserving comment lines and key ordering.
+**Why:** Users are hostile to tools that silently reorder or strip comments from
+their files. Comparison/diff logic works on the semantic key/value set
+(order-insensitive), but *writing* preserves layout.
+**Rejected:** Normalizing the file on write (simpler, but user-hostile).
+**Reconsider-trigger:** None foreseen.
+**Status:** ACCEPTED.
+
+## D12 — Configurable single env filename; vault named after the file
+
+**Decision:** The tracked filename is configurable (some projects use `.env`,
+others `.env.local`), defaulting to `.env`, resolved as
+`--file` flag > repo config (`<common-dir>/envkeep/config`) > default. All
+worktrees of one repo track the same filename. The vault is named after the
+tracked file (`.../vault/.env`, `.../vault/.env.local`).
+**Why:** Covers the real "`.env` here, `.env.local` there" need without
+multi-file complexity. Naming the vault after the file is a zero-cost seam: the
+day multi-file support lands, file #2 becomes a second vault with no migration
+and no collision.
+**Rejected:** Hardcoding `.env`; supporting multiple env files simultaneously
+now (out of scope — see ROADMAP).
+**Reconsider-trigger:** A project needs several env files tracked at once →
+promote config key `env_file` (string) to `env_files` (list), one vault per
+entry.
+**Status:** ACCEPTED.
+
+## D13 — Resolve git common dir as an absolute path
+
+**Decision:** Always obtain the common dir via
+`git rev-parse --path-format=absolute --git-common-dir` (git 2.31+), with a
+manual cwd-resolution fallback for older git.
+**Why:** `--git-common-dir` can return a path *relative to cwd* depending on git
+version and layout (notably bare-repo `.bare/` setups). Using it raw would write
+the vault to the wrong place when run from a subdirectory. This is also what
+makes the bare-repo (`.bare/`) layout work: the tool keys off the common dir,
+which resolves to `.bare`, so linked worktrees and bare setups behave
+identically.
+**Rejected:** Using the raw `--git-common-dir` output.
+**Reconsider-trigger:** None foreseen.
+**Status:** ACCEPTED.
+
+## D14 — Encryption OUT of v1
+
+**Decision:** The vault is plaintext in v1.
+**Why:** The exposure risk is no greater than the `.env` already carries today.
+Encryption's complexity is not justified now.
+**Rejected:** Encrypting from day one.
+**Reconsider-trigger:** When encryption does land (v2/v3), the pattern is a
+**per-machine key stored in the OS keychain**, not a typed password — avoids
+friction on every push/pull. This mirrors `vsync` (market reference seen during
+design).
+**Status:** ACCEPTED (deferred).
+
+## D15 — Daemon / `fsnotify` watch mode OUT of v1
+
+**Decision:** No background process. The shell hook covers the use case.
+**Why:** A persistent daemon is complexity the hook makes unnecessary.
+**Rejected:** Background watcher from the start.
+**Reconsider-trigger:** If, even with the hook, you keep landing in stale state
+frequently (e.g. IDE terminals that don't load `.zshrc`), that is the signal to
+reconsider. Absent that signal, do not build it.
+**Status:** ACCEPTED (deferred).
+
+## D16 — Team / remote sync / secret-manager integrations OUT of v1
+
+**Decision:** Personal, single-machine tooling. No team sharing, no remote
+backend, no Vault/Doppler/1Password integration.
+**Why:** Designing today for a team that does not exist is over-engineering.
+Market note: `vsync` grew from the same `.env`+worktree pain into a full
+encrypted vault with S3, multi-language runtime libs, and cloud fanout — a great
+product, but it solves a *different* problem (secret distribution to
+teams/production) and never became worktree-aware in the sense envkeep needs.
+Borrow its good techniques (keychain, lean onboarding UX), not its scope.
+**Rejected:** Building any of it now.
+**Reconsider-trigger:** A real person asks to use it in a team. Then the path is
+a new adapter behind the `VaultStore` interface (see D17), not a redesign.
+**Status:** ACCEPTED (deferred).
+
+## D17 — `VaultStore` interface, kept tiny
+
+**Decision:** Vault read/write sits behind a minimal interface —
+`Read() (map[string]string, error)` and `Write(map[string]string) error`. The
+only v1 implementation is the local flat file.
+**Why:** Leaves the door open for v2 (encrypted file) and future backends
+(reading from a real Vault/1Password) as *new adapters*, not a rewrite. Keeping
+it to two methods resists premature additions (`Lock()`, `History()`) that are
+themselves the deferred v2/v3 signals.
+**Rejected:** A fat interface anticipating locking/history now.
+**Reconsider-trigger:** Encryption (D14) or remote backends (D16) land → add
+adapters implementing this same interface.
+**Status:** ACCEPTED.
+
+## D18 — Tests use real git; a bash fixture script is the golden set
+
+**Decision:** Integration tests shell out to real `git`. A
+`scripts/mkfixture.sh` builds canonical repo states (normal **and** bare `.bare/`
+layouts, plus every sync scenario) and is the reusable "golden set" generator.
+Pure logic (parser, merge, 3-way diff) is unit-tested with no git.
+**Why:** The whole tool depends on real `git rev-parse` / worktree behavior;
+mocking git would test nothing. The bash fixture makes multi-worktree setups
+reproducible in CI, where git is always available.
+**Rejected:** Mocking the git layer.
+**Reconsider-trigger:** None foreseen.
+**Status:** ACCEPTED.
+
+## D19 — DX toolchain: golangci-lint v2 + lefthook, both pinned in `./bin`
+
+**Decision:** Formatting + linting via a single pinned `golangci-lint` v2
+(gofumpt + goimports as its formatters, plus a curated linter set). Git hooks
+managed by `lefthook` (Go, single binary) via `lefthook.yml` (`pre-commit`:
+format staged Go + re-stage, then lint + test; `pre-push`: race test + build).
+Both tools install to `./bin` — **not** into `go.mod` — pinned by version in the
+`Makefile`. CI runs the same `make` targets with the same pinned versions.
+Established before the first line of application code.
+**Why:** Consistency is cheapest to enforce at day-1 and painful to retrofit.
+golangci-lint v2 collapses three tools (gofumpt, goimports, linter) into one.
+Neither tool goes through `go tool`/`go.mod`: golangci-lint would drag its large
+dependency tree into this project's `go.sum`, and lefthook is installed with
+`go install …@version` (which does not touch the module) into `./bin`. Keeping
+both as pinned `./bin` binaries preserves the minimal, inspectable ethos while
+giving lefthook's ergonomics: staged-file scoping (`{staged_files}`), automatic
+re-staging of formatted files (`stage_fixed`), and one declarative `lefthook.yml`
+instead of hand-rolled shell. CI calling `make` keeps local and CI from drifting.
+**Rejected:** `go tool`-pinned tools (pollutes go.mod); the python `pre-commit`
+framework (drags a Python runtime); separate gofmt/goimports/staticcheck
+binaries (golangci-lint v2 subsumes them).
+**Reconsider-trigger:** None foreseen for the hook manager. Linter/hook versions
+bump by editing the `Makefile` pins.
+**Status:** REVISED. *History (kept on purpose): the first implementation used
+native committed git hooks under `.githooks/` via `core.hooksPath`, chosen for a
+strict no-new-deps stance. Switched to `lefthook` at the user's request — it is
+the Go-native hook manager, installs to `./bin` under the same pinned pattern as
+golangci-lint (so `go.mod` stays clean), and its staged-file scoping + re-staging
+give better ergonomics than the shell scripts. The no-dep purity was traded for
+a small, well-contained tool that fits the intended long-term direction.*
