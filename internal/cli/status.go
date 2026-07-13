@@ -1,14 +1,12 @@
 package cli
 
 import (
-	"errors"
 	"io"
 	"path/filepath"
 
 	"github.com/carvalhosauro/envkeep/internal/envfile"
 	"github.com/carvalhosauro/envkeep/internal/git"
 	"github.com/carvalhosauro/envkeep/internal/state"
-	"github.com/carvalhosauro/envkeep/internal/vault"
 )
 
 // Status prints, for every worktree of the repo, how its local env file relates
@@ -21,16 +19,21 @@ func Status(w io.Writer, cwd, envFileFlag string) error {
 	}
 	p := &printer{w: w}
 
-	vaultEnv, vaultErr := ctx.Vault.Read()
-	vaultExists := true
-	switch {
-	case errors.Is(vaultErr, vault.ErrNotFound):
-		vaultExists = false
-		vaultEnv = envfile.Env{}
-	case vaultErr != nil:
-		return vaultErr
+	// Stat the vault mtime up front (cheap) for the mtime fast path, but defer
+	// parsing it: only slow-path worktrees (an mtime miss) need the parsed vault,
+	// and the parse dominates cost, so parse at most once and only on first need.
+	// When every worktree is clean, the vault is never read (#11, mirrors check).
+	vaultMTime, vaultExists := mtimeNanos(ctx.VaultPath)
+	var vaultEnv envfile.Env
+	var vaultErr error
+	vaultLoaded := false
+	loadVault := func() (envfile.Env, error) {
+		if !vaultLoaded {
+			vaultEnv, _, vaultErr = readVault(ctx)
+			vaultLoaded = true
+		}
+		return vaultEnv, vaultErr
 	}
-	vaultMTime, _ := mtimeNanos(ctx.VaultPath)
 
 	wts, err := git.Worktrees(cwd)
 	if err != nil {
@@ -45,7 +48,7 @@ func Status(w io.Writer, cwd, envFileFlag string) error {
 		if wt.Bare {
 			continue
 		}
-		label := worktreeStatus(ctx, wt, vaultEnv, vaultExists, vaultMTime)
+		label := worktreeStatus(ctx, wt, vaultExists, vaultMTime, loadVault)
 		p.printf("  %-24s %s\n", worktreeName(wt), label)
 	}
 	return p.err
@@ -59,7 +62,9 @@ func worktreeName(wt git.Worktree) string {
 }
 
 // worktreeStatus computes the one-word status label for a single worktree.
-func worktreeStatus(ctx *Context, wt git.Worktree, vaultEnv envfile.Env, vaultExists bool, vaultMTime int64) string {
+// loadVault parses the shared vault lazily — it is called only on the slow path
+// (an mtime miss), so a quiescent repo never pays for the parse.
+func worktreeStatus(ctx *Context, wt git.Worktree, vaultExists bool, vaultMTime int64, loadVault func() (envfile.Env, error)) string {
 	localPath := filepath.Join(wt.Path, ctx.EnvFile)
 	localMTime, localExists := mtimeNanos(localPath)
 
@@ -77,20 +82,34 @@ func worktreeStatus(ctx *Context, wt git.Worktree, vaultEnv envfile.Env, vaultEx
 	if err != nil {
 		return "error: " + err.Error()
 	}
-	marker, hasMarker, err := state.Load(wtGitDir)
+
+	// mtime fast path: read only the marker's cached mtimes (LoadStat, no base)
+	// and, if neither file moved since the last sync, it is clean without loading
+	// the base or parsing the vault (D5 cache, #11 — mirrors check.go).
+	markerLocal, markerVault, hasMarker, err := state.LoadStat(wtGitDir)
 	if err != nil {
 		return "error: " + err.Error()
 	}
 	if !hasMarker {
 		return "unsynced"
 	}
-
-	// mtime fast path: if neither file moved since the last sync, it is clean
-	// without parsing anything (D5 cache).
-	if localMTime == marker.LocalMTime && vaultMTime == marker.VaultMTime {
+	if localMTime == markerLocal && vaultMTime == markerVault {
 		return "clean"
 	}
 
+	// mtime miss: load the full marker (its base drives the 3-way compare), parse
+	// the vault (once, shared across slow-path worktrees), and read local content.
+	marker, ok, err := state.Load(wtGitDir)
+	if err != nil {
+		return "error: " + err.Error()
+	}
+	if !ok {
+		return "unsynced"
+	}
+	vaultEnv, err := loadVault()
+	if err != nil {
+		return "error: " + err.Error()
+	}
 	localEnv, _, err := readEnv(localPath)
 	if err != nil {
 		return "error: " + err.Error()
