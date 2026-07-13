@@ -7,7 +7,7 @@ Append to the log at the end of any working session.
 ## Current phase
 
 **Phase 0 (Design & docs) — complete. Phase 1 (v1 MVP) — in progress
-(steps 1–4 of 6 done).**
+(steps 1–4 of 6 done; step 5 underway — `state` done, `cmd` next).**
 
 Repo initialized (`git`, `go mod` = `github.com/carvalhosauro/envkeep`, Go
 1.26). DX toolchain in place (D19). Golden-set fixture generator and the core
@@ -129,3 +129,11 @@ step 3 (`internal/git`, 73.8%), step 4 (`internal/vault`, 81.1%).
   synthesize a file from scratch. `vault.Path(commonDir, filename)` centralizes
   the on-disk layout and names the vault after the tracked file (D12). Lint
   clean, 81.1% coverage.
+- **2026-07-12 · Phase 1 step 5a (state).** Extracted the temp+rename atomic
+  write into `internal/fsutil.WriteFileAtomic` (now shared by vault and state).
+  Added `internal/state`: per-worktree `Marker` (vault hash + local/vault
+  mtimes) stored at `<gitdir>/envkeep.base` (D5). `HashEnv` is an
+  order-independent, length-prefixed SHA-256 over the env so it can't collide by
+  shifting characters across the '=' boundary. `Load` returns ok=false (nil err)
+  when no marker exists yet. Pure file IO, no git needed. Lint clean, state 93.2%
+  / vault 95.0%. `cmd` (status/push/pull) is next.
