@@ -8,7 +8,10 @@ GOLANGCI_LINT          := $(BIN)/golangci-lint
 LEFTHOOK               := $(BIN)/lefthook
 export PATH            := $(BIN):$(PATH)
 
-.PHONY: all setup tools hooks tidy fmt fmt-check lint vet test cover cover-html build clean help
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS := -X github.com/carvalhosauro/envkeep/internal/buildinfo.Version=$(VERSION)
+
+.PHONY: all setup tools hooks tidy fmt fmt-check lint vet test cover cover-html build install clean help
 
 ## all: format, lint, test (default local loop)
 all: fmt lint test
@@ -72,9 +75,13 @@ cover-html: cover
 	go tool cover -html=coverage.out -o coverage.html
 	@echo ">> wrote coverage.html"
 
-## build: build the CLI into ./bin
+## build: build the CLI into ./bin (version stamped from git)
 build:
-	go build -o $(BIN)/envkeep ./cmd/envkeep
+	go build -ldflags "$(LDFLAGS)" -o $(BIN)/envkeep ./cmd/envkeep
+
+## install: install envkeep into GOBIN (on PATH via your Go toolchain)
+install:
+	go install -ldflags "$(LDFLAGS)" ./cmd/envkeep
 
 ## clean: remove build + coverage artifacts (tools kept)
 clean:

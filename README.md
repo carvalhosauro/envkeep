@@ -39,6 +39,21 @@ symptoms follow:
   worktree whose `.env` has drifted, so you don't have to remember to run the
   command.
 
+## Install
+
+Once the repo is published to GitHub, on any machine with Go:
+
+```sh
+go install github.com/carvalhosauro/envkeep/cmd/envkeep@latest
+```
+
+That builds from source and drops `envkeep` in your Go bin (`go env GOBIN`, on
+your PATH). `envkeep version` then reports the installed module version. No repo
+clone needed.
+
+From a clone (for development): `make install` (stamps the version from `git
+describe`), or `make build` to produce `./bin/envkeep`.
+
 ## Commands
 
 ```
