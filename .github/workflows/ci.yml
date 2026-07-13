@@ -1,0 +1,35 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Single source of truth: CI runs the same make targets as local dev,
+      # with the same pinned golangci-lint version. git is preinstalled on the
+      # runner, so real-git fixture tests (scripts/mkfixture.sh) work here too.
+      - name: Install tools
+        run: make tools
+
+      - name: Format check
+        run: make fmt-check
+
+      - name: Lint
+        run: make lint
+
+      - name: Test + coverage
+        run: make cover

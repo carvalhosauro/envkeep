@@ -1,0 +1,30 @@
+# Git hooks for envkeep, managed by lefthook (Go, single binary, pinned in ./bin).
+# Install/refresh with: make hooks   (or: bin/lefthook install)
+# Bypass once with: LEFTHOOK=0 git commit ...   or   git commit --no-verify
+
+pre-commit:
+  parallel: false # format must run and re-stage before lint/test read the files
+  jobs:
+    # Format only the staged Go files, then re-stage what changed.
+    - name: format
+      glob: "*.go"
+      run: bin/golangci-lint fmt {staged_files}
+      stage_fixed: true
+
+    # Lint the whole module (golangci-lint analyses per package, not per file).
+    - name: lint
+      glob: "*.go"
+      run: bin/golangci-lint run
+
+    - name: test
+      glob: "*.go"
+      run: go test ./...
+
+pre-push:
+  parallel: false
+  jobs:
+    - name: test-race
+      run: go test -race ./...
+
+    - name: build
+      run: go build ./...
