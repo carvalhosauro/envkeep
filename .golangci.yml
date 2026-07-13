@@ -1,0 +1,43 @@
+# golangci-lint v2 configuration.
+# Lint + formatting live in one tool (see docs/DECISIONS.md D19).
+version: "2"
+
+run:
+  modules-download-mode: readonly
+
+linters:
+  # "standard" = errcheck, govet, ineffassign, staticcheck, unused.
+  default: standard
+  enable:
+    - bodyclose      # unclosed HTTP/response bodies
+    - errorlint      # correct error wrapping / comparisons
+    - gocritic       # opinionated correctness + style diagnostics
+    - misspell       # spelling in comments/strings
+    - nolintlint     # //nolint directives must be specific + explained
+    - revive         # golint successor, broad style checks
+    - unconvert      # redundant type conversions
+    - unparam        # unused function parameters
+    - wastedassign   # assignments never used
+  settings:
+    misspell:
+      locale: US
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+  exclusions:
+    generated: lax
+    rules:
+      # Tests may ignore errors and reuse params more loosely.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - unparam
+
+formatters:
+  enable:
+    - gofumpt        # stricter gofmt
+    - goimports      # import grouping/ordering
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/carvalhosauro/envkeep

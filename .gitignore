@@ -1,0 +1,21 @@
+# Build + tooling output
+/bin/
+coverage.out
+coverage.html
+*.test
+envkeep
+
+# OS / editor
+.DS_Store
+*.swp
+*~
+
+# lefthook per-developer overrides
+lefthook-local.yml
+
+# oh-my-claudecode session/agent state
+.omc/
+
+# Note: do NOT blanket-ignore .env here — envkeep's own testdata may include
+# sample .env fixtures that must be committed. Real .env files only ever live
+# in throwaway temp repos created by scripts/mkfixture.sh, never in this repo.
