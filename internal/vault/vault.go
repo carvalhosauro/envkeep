@@ -29,11 +29,14 @@ type Store interface {
 // shared state (D3). Being inside .git, it is never tracked by git.
 const dirName = "envkeep"
 
+// vaultSubdir is the directory under dirName that holds the per-file vaults.
+const vaultSubdir = "vault"
+
 // Path returns the vault file path for a repo's common dir and tracked env
 // filename. The vault is named after the tracked file so future multi-file
 // support (deferred, D12) can add more vaults with no migration.
 func Path(commonDir, envFilename string) string {
-	return filepath.Join(commonDir, dirName, "vault", envFilename)
+	return filepath.Join(commonDir, dirName, vaultSubdir, envFilename)
 }
 
 // FileStore is the flat-file vault backend.
@@ -82,6 +85,6 @@ func (s *FileStore) Write(env envfile.Env) error {
 	for _, k := range keys {
 		f.Set(k, env[k])
 	}
-	// 0600: the vault holds secrets, so it is owner-only.
-	return fsutil.WriteFileAtomic(s.path, f.Render(), 0o600)
+	// The vault holds secrets, so it is owner-only (fsutil.SecretFilePerm).
+	return fsutil.WriteFileAtomic(s.path, f.Render(), fsutil.SecretFilePerm)
 }

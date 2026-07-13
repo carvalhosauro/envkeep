@@ -51,12 +51,22 @@ func New() *File {
 	return &File{index: map[string]*line{}}
 }
 
+const (
+	// initialScanBuffer is the scanner's starting buffer size; it grows as
+	// needed up to maxLineBytes.
+	initialScanBuffer = 64 * 1024
+	// maxLineBytes caps a single env line. A longer line fails parsing (an
+	// unterminated quote / oversized token) rather than being silently
+	// truncated — multiline values are not supported by design.
+	maxLineBytes = 4 * 1024 * 1024
+)
+
 // Parse reads an .env file. It returns an error with a 1-based line number on
 // malformed input (bad key, unterminated quote, missing '=').
 func Parse(data []byte) (*File, error) {
 	f := New()
 	sc := bufio.NewScanner(bytes.NewReader(data))
-	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	sc.Buffer(make([]byte, 0, initialScanBuffer), maxLineBytes)
 	n := 0
 	for sc.Scan() {
 		n++
