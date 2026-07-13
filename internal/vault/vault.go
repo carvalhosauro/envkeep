@@ -12,6 +12,7 @@ import (
 	"sort"
 
 	"github.com/carvalhosauro/envkeep/internal/envfile"
+	"github.com/carvalhosauro/envkeep/internal/fsutil"
 )
 
 // ErrNotFound is returned by Read when the vault does not exist yet — the repo
@@ -81,33 +82,6 @@ func (s *FileStore) Write(env envfile.Env) error {
 	for _, k := range keys {
 		f.Set(k, env[k])
 	}
-	return atomicWrite(s.path, f.Render())
-}
-
-// atomicWrite writes data to path via a temp file + rename, so a crash mid-write
-// can never leave a half-written vault. The file is owner-only (it holds
-// secrets); os.CreateTemp already creates it with 0600.
-func atomicWrite(path string, data []byte) error {
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("vault: create dir: %w", err)
-	}
-	tmp, err := os.CreateTemp(dir, ".vault-*.tmp")
-	if err != nil {
-		return fmt.Errorf("vault: temp file: %w", err)
-	}
-	tmpName := tmp.Name()
-	defer func() { _ = os.Remove(tmpName) }() // no-op once renamed
-
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("vault: write temp: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("vault: close temp: %w", err)
-	}
-	if err := os.Rename(tmpName, path); err != nil {
-		return fmt.Errorf("vault: rename: %w", err)
-	}
-	return nil
+	// 0600: the vault holds secrets, so it is owner-only.
+	return fsutil.WriteFileAtomic(s.path, f.Render(), 0o600)
 }
