@@ -302,3 +302,27 @@ the Go-native hook manager, installs to `./bin` under the same pinned pattern as
 golangci-lint (so `go.mod` stays clean), and its staged-file scoping + re-staging
 give better ergonomics than the shell scripts. The no-dep purity was traded for
 a small, well-contained tool that fits the intended long-term direction.*
+
+## D20 — Command safety semantics, diff review via `--dry-run`, override filename
+
+**Decision:** `push`/`pull` **refuse** rather than silently resolve when they
+would lose work: `push` refuses when the vault is `Behind`-relative (has changes
+the local env lacks) or in `Conflict`; `pull` refuses when local is `Ahead` or in
+`Conflict`. A mergeable `Diverged` (non-overlapping changes) proceeds via union.
+Diff review before overwriting is provided by `--dry-run` (prints the +/~/-
+delta, writes nothing), not an interactive prompt. The per-worktree override file
+is the tracked filename + `.override` (e.g. `.env.override`), gitignored by the
+user.
+**Why:** Resolves the original open question "review the diff before overwriting
+the vault" without a fragile interactive stdin prompt — `--dry-run` keeps the
+commands non-interactive, scriptable, and easy to test, while still letting you
+preview. Refuse-not-merge on conflict is the D5 safety made concrete: the tool
+never picks a winner for a real conflict. The `.override` suffix guarantees the
+override file is always distinct from the tracked file (avoids the clash noted in
+STATUS when the tracked file is itself `.env.local`).
+**Rejected:** Interactive y/N confirmation in v1 (stdin coupling, harder to
+test); auto-merging conflicts by picking a side (silent data loss).
+**Reconsider-trigger:** Interactive per-key conflict resolution and a real
+confirm prompt are future polish; `--prune` (letting push delete vault keys the
+local env dropped) is deferred — union never deletes today (D8).
+**Status:** ACCEPTED.

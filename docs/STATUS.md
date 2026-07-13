@@ -7,7 +7,11 @@ Append to the log at the end of any working session.
 ## Current phase
 
 **Phase 0 (Design & docs) — complete. Phase 1 (v1 MVP) — in progress
-(steps 1–4 of 6 done; step 5 underway — `state` done, `cmd` next).**
+(steps 1–5 of 6 done; only the shell hook, step 6, remains).**
+
+The core is working end-to-end: `push`/`pull`/`status` propagate env across
+worktrees and handle per-worktree overrides and conflicts. This already meets
+the manual-workflow half of the success criterion.
 
 Repo initialized (`git`, `go mod` = `github.com/carvalhosauro/envkeep`, Go
 1.26). DX toolchain in place (D19). Golden-set fixture generator and the core
@@ -26,26 +30,31 @@ recorded in [`DECISIONS.md`](DECISIONS.md).
 
 ## Next action
 
-Continue Phase 1 at build step 5 — see [`ROADMAP.md`](ROADMAP.md):
+Final Phase 1 step — see [`ROADMAP.md`](ROADMAP.md):
 
-5. `internal/state` + `internal/cmd` — per-worktree base marker (vault hash +
-   mtimes, in the worktree gitdir, D5), then `status`/`push`/`pull` wiring
-   config + git + vault + envfile, with conflict detection and the mtime cache.
-6. `internal/hook` — shell snippet emitter.
+6. `internal/hook` — emit the zsh `chpwd` / bash cd-trap snippet with the
+   shell-side mtime guard, wired as `envkeep hook zsh|bash` (D7). This closes the
+   "forgot to run the command" half of the success criterion.
 
 Done: step 1 (`scripts/mkfixture.sh`), step 2 (`internal/envfile`, 96.1%),
-step 3 (`internal/git`, 73.8%), step 4 (`internal/vault`, 81.1%).
+step 3 (`internal/git`, 73.8%), step 4 (`internal/vault`, ~95%), step 5
+(`internal/config` + `internal/state` + `internal/cmd`: status/push/pull, cmd
+~67%).
 
-## Open items to settle at implementation time
+## Open items
 
-- Exact override filename (e.g. `.env.override` vs `.env.local` — note the
-  clash if `.env.local` is also the *tracked* file; pick a distinct override
-  name).
-- `.env` parser multiline-value behavior (reject vs best-effort) — decide in
-  `internal/envfile`.
-- Hash function for the base marker's `vault_hash` (any stable content hash;
-  SHA-256 fine).
-- Go module path / binary distribution details.
+Resolved during implementation:
+- ~~Override filename~~ → tracked filename + `.override` suffix, always distinct
+  (D20).
+- ~~Base marker hash function~~ → moot; the marker stores the base env snapshot
+  as JSON, not a hash (D5 follow-up).
+
+Still open:
+- `.env` parser multiline-value behavior: currently rejected (unterminated quote
+  errors). Revisit only if a real `.env` needs multiline.
+- Binary distribution details (release/install) — Phase 2 concern.
+- README: document the `.override` convention and that the user must gitignore
+  the override file (a docs pass, not code).
 
 ## Log — how we got here
 
@@ -144,3 +153,14 @@ step 3 (`internal/git`, 73.8%), step 4 (`internal/vault`, 81.1%).
   `HashEnv` dropped. Added `internal/config`: per-repo `env_file` at
   `<common-dir>/envkeep/config` (default `.env`, D12), reusing the envfile
   parser. Lint clean, state 85.7% / config 87.5%.
+- **2026-07-12 · Phase 1 step 5c (cmd — the integration).** `internal/cmd` wires
+  git + config + vault + state + envfile into `status`/`push`/`pull`. `status`
+  lists every worktree's state (clean/ahead/behind/diverged/conflict/absent/
+  unsynced) with the mtime fast-path skipping parse when nothing moved (D5
+  cache). `push` = union merge minus override keys, refusing on Behind/Conflict
+  (D8/D5). `pull` = vault ⊕ override written with layout preserved, refusing when
+  local is Ahead (D9/D11). Both take `--dry-run` for diff review instead of an
+  interactive prompt (D20). Verified end-to-end against the fixture *and* by
+  driving the built binary: push from wt-a excluded the override PORT, wt-b pull
+  got the shared vars plus its own PORT — the propagation + per-worktree-port
+  pain, solved. Lint clean, cmd ~67%. Only the shell hook (step 6) remains.

@@ -3,10 +3,12 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 
 	"github.com/carvalhosauro/envkeep/internal/buildinfo"
+	"github.com/carvalhosauro/envkeep/internal/cmd"
 )
 
 func main() {
@@ -14,14 +16,88 @@ func main() {
 }
 
 func run(args []string) int {
-	if len(args) > 0 {
-		switch args[0] {
-		case "version", "--version", "-v":
-			fmt.Println("envkeep", buildinfo.Version)
-			return 0
-		}
+	if len(args) == 0 {
+		usage()
+		return 1
 	}
-	// Subcommands (status/push/pull/hook) arrive in Phase 1 — see docs/ROADMAP.md.
-	fmt.Fprintln(os.Stderr, "envkeep: no command implemented yet (v1 in progress)")
-	return 1
+	switch args[0] {
+	case "version", "--version", "-v":
+		fmt.Println("envkeep", buildinfo.Version)
+		return 0
+	case "status":
+		return runStatus(args[1:])
+	case "push":
+		return runPush(args[1:])
+	case "pull":
+		return runPull(args[1:])
+	case "help", "-h", "--help":
+		usage()
+		return 0
+	default:
+		fmt.Fprintf(os.Stderr, "envkeep: unknown command %q\n", args[0])
+		usage()
+		return 1
+	}
+}
+
+func runStatus(args []string) int {
+	fs := flag.NewFlagSet("status", flag.ContinueOnError)
+	file := fs.String("file", "", "tracked env filename (overrides repo config)")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	return dispatch(func(cwd string) error {
+		return cmd.Status(os.Stdout, cwd, *file)
+	})
+}
+
+func runPush(args []string) int {
+	fs := flag.NewFlagSet("push", flag.ContinueOnError)
+	file := fs.String("file", "", "tracked env filename (overrides repo config)")
+	dry := fs.Bool("dry-run", false, "show what would change without writing")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	return dispatch(func(cwd string) error {
+		return cmd.Push(os.Stdout, cwd, *file, *dry)
+	})
+}
+
+func runPull(args []string) int {
+	fs := flag.NewFlagSet("pull", flag.ContinueOnError)
+	file := fs.String("file", "", "tracked env filename (overrides repo config)")
+	dry := fs.Bool("dry-run", false, "show what would change without writing")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	return dispatch(func(cwd string) error {
+		return cmd.Pull(os.Stdout, cwd, *file, *dry)
+	})
+}
+
+func dispatch(fn func(cwd string) error) int {
+	cwd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "envkeep:", err)
+		return 1
+	}
+	if err := fn(cwd); err != nil {
+		fmt.Fprintln(os.Stderr, "envkeep:", err)
+		return 1
+	}
+	return 0
+}
+
+func usage() {
+	fmt.Fprint(os.Stderr, `envkeep — keep .env in sync across git worktrees
+
+usage:
+  envkeep status            show each worktree's sync state vs the vault
+  envkeep push [--dry-run]  merge this worktree's .env into the vault
+  envkeep pull [--dry-run]  write the vault into this worktree's .env
+  envkeep version
+
+flags:
+  --file NAME   tracked env filename (overrides repo config; default .env)
+`)
 }
