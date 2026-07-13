@@ -15,7 +15,7 @@ Current phase: see [`STATUS.md`](STATUS.md).
   reconsider-trigger.
 - Deliverables: `README.md`, `AGENTS.md`, `docs/{DECISIONS,DESIGN,ROADMAP,STATUS}.md`.
 
-## Phase 1 — v1 MVP  ⬅ next
+## Phase 1 — v1 MVP  ✅ complete
 
 The whole point of v1. Build order matches risk (riskiest logic + golden set
 first):

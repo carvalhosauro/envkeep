@@ -2,9 +2,9 @@
 
 Keep `.env` files in sync across the git worktrees of one repository.
 
-> Status: **design complete, implementation not started.** See
-> [`docs/STATUS.md`](docs/STATUS.md) for the current phase. AI agents: start at
-> [`AGENTS.md`](AGENTS.md).
+> Status: **v1 (MVP) complete** — `status`/`push`/`pull`/`check` + shell hook
+> work end-to-end. See [`docs/STATUS.md`](docs/STATUS.md) for detail. AI agents:
+> start at [`AGENTS.md`](AGENTS.md).
 
 ## The problem
 
@@ -39,13 +39,35 @@ symptoms follow:
   worktree whose `.env` has drifted, so you don't have to remember to run the
   command.
 
-## Command sketch (v1, not yet built)
+## Commands
 
 ```
-envkeep status     # per-worktree: synced / ahead / behind / conflict / absent
-envkeep push       # local .env -> vault (union merge by default; --prune to delete)
-envkeep pull       # vault -> local .env (preserves order/comments, reapplies override)
-envkeep hook zsh   # print the shell snippet to source in .zshrc / .bashrc
+envkeep status            # per-worktree: clean / ahead / behind / diverged / conflict / absent
+envkeep push [--dry-run]  # local .env -> vault (union merge; refuses on conflict)
+envkeep pull [--dry-run]  # vault -> local .env (preserves order/comments, reapplies override)
+envkeep check             # quiet drift check for the current worktree (used by the hook)
+envkeep hook zsh|bash     # print the shell snippet to source in .zshrc / .bashrc
+```
+
+### Shell integration
+
+```sh
+# ~/.zshrc  (or ~/.bashrc with: bash)
+eval "$(envkeep hook zsh)"
+```
+
+Warns discreetly when you `cd` into a worktree whose `.env` has drifted from the
+vault. Silent when in sync.
+
+### Per-worktree overrides
+
+Values that must differ between worktrees (e.g. the dev-server port) go in an
+override file next to `.env`, named `<env-file>.override` (e.g. `.env.override`).
+Override keys are never pushed to the shared vault and are re-applied on every
+pull. **Gitignore the override file** — it is worktree-local:
+
+```gitignore
+.env.override
 ```
 
 ## Success criterion for the MVP

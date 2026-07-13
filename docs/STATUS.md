@@ -6,12 +6,14 @@ Append to the log at the end of any working session.
 
 ## Current phase
 
-**Phase 0 (Design & docs) — complete. Phase 1 (v1 MVP) — in progress
-(steps 1–5 of 6 done; only the shell hook, step 6, remains).**
+**Phase 0 (Design & docs) — complete. Phase 1 (v1 MVP) — COMPLETE (all 6
+steps).**
 
-The core is working end-to-end: `push`/`pull`/`status` propagate env across
-worktrees and handle per-worktree overrides and conflicts. This already meets
-the manual-workflow half of the success criterion.
+Both halves of the success criterion are met: `push`/`pull`/`status` propagate
+env across worktrees (handling per-worktree overrides and conflicts), and the
+shell hook (`envkeep hook zsh|bash` → `envkeep check`) warns on drift when you
+enter a worktree — removing "I forgot to run the command". Verified end-to-end
+by driving the built binary and by sourcing the bash snippet.
 
 Repo initialized (`git`, `go mod` = `github.com/carvalhosauro/envkeep`, Go
 1.26). DX toolchain in place (D19). Golden-set fixture generator and the core
@@ -30,16 +32,15 @@ recorded in [`DECISIONS.md`](DECISIONS.md).
 
 ## Next action
 
-Final Phase 1 step — see [`ROADMAP.md`](ROADMAP.md):
+Phase 1 is done. Candidate follow-ups (none blocking, pick per need):
+- Real-world shakedown: use it daily across actual worktrees; watch for the
+  daemon trigger (D15 — hook proving insufficient) or any rough edges.
+- Polish backlog (small): `--prune` for push deletions (D20), interactive
+  conflict resolution, tag/version stamping for releases.
+- Phase 2 (encryption) stays gated behind D14; do not start without the trigger.
 
-6. `internal/hook` — emit the zsh `chpwd` / bash cd-trap snippet with the
-   shell-side mtime guard, wired as `envkeep hook zsh|bash` (D7). This closes the
-   "forgot to run the command" half of the success criterion.
-
-Done: step 1 (`scripts/mkfixture.sh`), step 2 (`internal/envfile`, 96.1%),
-step 3 (`internal/git`, 73.8%), step 4 (`internal/vault`, ~95%), step 5
-(`internal/config` + `internal/state` + `internal/cmd`: status/push/pull, cmd
-~67%).
+All 6 build steps done: mkfixture, envfile (96.1%), git (73.8%), vault (~95%),
+config (87.5%), state (85.7%), cli status/push/pull/check (~69%), hook (100%).
 
 ## Open items
 
@@ -49,12 +50,12 @@ Resolved during implementation:
 - ~~Base marker hash function~~ → moot; the marker stores the base env snapshot
   as JSON, not a hash (D5 follow-up).
 
+- ~~README: document the `.override` convention + gitignore~~ → done.
+
 Still open:
 - `.env` parser multiline-value behavior: currently rejected (unterminated quote
   errors). Revisit only if a real `.env` needs multiline.
 - Binary distribution details (release/install) — Phase 2 concern.
-- README: document the `.override` convention and that the user must gitignore
-  the override file (a docs pass, not code).
 
 ## Log — how we got here
 
@@ -169,3 +170,12 @@ Still open:
   user preference) and renamed the command package to `internal/cli` so the
   `cmd/` binary directory and the logic package don't both mean "cmd". Makefile
   build target now points at `./cmd/envkeep`. History preserved via `git mv`.
+- **2026-07-12 · Phase 1 step 6 (hook) — MVP complete.** `internal/hook` emits
+  the zsh (`chpwd`) / bash (`PROMPT_COMMAND` guarded on `$PWD`) integration
+  snippet via `envkeep hook zsh|bash`. Added the `envkeep check` command
+  (`cli.Check`): a quiet per-worktree drift check that prints nothing when clean,
+  one discreet line when drifted (with the right push/pull suggestion), stays
+  silent on any error so it never breaks the prompt, and uses the mtime fast path
+  to stay cheap (D7). Verified end-to-end, including sourcing the bash snippet and
+  firing the hook on cd. hook 100% / cli ~69% coverage, lint clean. This closes
+  the "forgot to run the command" half of the success criterion — v1 done.

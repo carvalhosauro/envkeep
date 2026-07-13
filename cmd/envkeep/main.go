@@ -9,6 +9,7 @@ import (
 
 	"github.com/carvalhosauro/envkeep/internal/buildinfo"
 	"github.com/carvalhosauro/envkeep/internal/cli"
+	"github.com/carvalhosauro/envkeep/internal/hook"
 )
 
 func main() {
@@ -30,6 +31,12 @@ func run(args []string) int {
 		return runPush(args[1:])
 	case "pull":
 		return runPull(args[1:])
+	case "check":
+		return dispatch(func(cwd string) error {
+			return cli.Check(os.Stdout, cwd)
+		})
+	case "hook":
+		return runHook(args[1:])
 	case "help", "-h", "--help":
 		usage()
 		return 0
@@ -75,6 +82,20 @@ func runPull(args []string) int {
 	})
 }
 
+func runHook(args []string) int {
+	if len(args) != 1 {
+		fmt.Fprintln(os.Stderr, "usage: envkeep hook <zsh|bash>")
+		return 2
+	}
+	snippet, err := hook.Snippet(args[0])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "envkeep:", err)
+		return 1
+	}
+	fmt.Print(snippet)
+	return 0
+}
+
 func dispatch(fn func(cwd string) error) int {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -95,9 +116,14 @@ usage:
   envkeep status            show each worktree's sync state vs the vault
   envkeep push [--dry-run]  merge this worktree's .env into the vault
   envkeep pull [--dry-run]  write the vault into this worktree's .env
+  envkeep check             quiet drift check for the current worktree (for hooks)
+  envkeep hook <zsh|bash>   print shell integration to source in your rc file
   envkeep version
 
 flags:
   --file NAME   tracked env filename (overrides repo config; default .env)
+
+shell integration:
+  eval "$(envkeep hook zsh)"   # or: bash — warns on drift when you cd into a worktree
 `)
 }
