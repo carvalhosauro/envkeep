@@ -32,9 +32,7 @@ func run(args []string) int {
 	case "pull":
 		return runPull(args[1:])
 	case "check":
-		return dispatch(func(cwd string) error {
-			return cli.Check(os.Stdout, cwd)
-		})
+		return runCheck(args[1:])
 	case "hook":
 		return runHook(args[1:])
 	case "help", "-h", "--help":
@@ -79,6 +77,17 @@ func runPull(args []string) int {
 	}
 	return dispatch(func(cwd string) error {
 		return cli.Pull(os.Stdout, cwd, *file, *dry)
+	})
+}
+
+func runCheck(args []string) int {
+	fs := flag.NewFlagSet("check", flag.ContinueOnError)
+	porcelain := fs.Bool("porcelain", false, "print a bare state token (for scripts/prompts)")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	return dispatch(func(cwd string) error {
+		return cli.Check(os.Stdout, cwd, *porcelain)
 	})
 }
 
