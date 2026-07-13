@@ -8,7 +8,7 @@ import (
 	"os"
 
 	"github.com/carvalhosauro/envkeep/internal/buildinfo"
-	"github.com/carvalhosauro/envkeep/internal/cmd"
+	"github.com/carvalhosauro/envkeep/internal/cli"
 )
 
 func main() {
@@ -47,7 +47,7 @@ func runStatus(args []string) int {
 		return 2
 	}
 	return dispatch(func(cwd string) error {
-		return cmd.Status(os.Stdout, cwd, *file)
+		return cli.Status(os.Stdout, cwd, *file)
 	})
 }
 
@@ -59,7 +59,7 @@ func runPush(args []string) int {
 		return 2
 	}
 	return dispatch(func(cwd string) error {
-		return cmd.Push(os.Stdout, cwd, *file, *dry)
+		return cli.Push(os.Stdout, cwd, *file, *dry)
 	})
 }
 
@@ -71,7 +71,7 @@ func runPull(args []string) int {
 		return 2
 	}
 	return dispatch(func(cwd string) error {
-		return cmd.Pull(os.Stdout, cwd, *file, *dry)
+		return cli.Pull(os.Stdout, cwd, *file, *dry)
 	})
 }
 

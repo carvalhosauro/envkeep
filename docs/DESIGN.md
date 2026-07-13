@@ -54,16 +54,22 @@ In each worktree's working tree:
 ## Component layout (Go packages)
 
 ```
-main.go                 # subcommand dispatch (stdlib flag, D6)
+cmd/envkeep/main.go     # entrypoint: subcommand dispatch (stdlib flag, D6)
+internal/buildinfo/     # build-time version metadata
+internal/config/        # per-repo env_file config (D12)
 internal/git/           # common-dir (absolute), worktree list, per-worktree gitdir
 internal/envfile/       # order/comment-preserving parser, merge, 3-way diff
-internal/vault/         # VaultStore interface (D17) + flatfile implementation
+internal/vault/         # Store interface (D17) + flatfile implementation
 internal/state/         # base-marker read/write (conflict + cache)
-internal/cmd/           # status / push / pull
-internal/hook/          # emits the zsh chpwd / bash cd-trap snippet
+internal/fsutil/        # shared atomic file write
+internal/cli/           # status / push / pull (wires everything together)
+internal/hook/          # emits the zsh chpwd / bash cd-trap snippet (pending)
 scripts/mkfixture.sh    # golden-set fixture generator (D18)
-testdata/golden/        # expected outputs
 ```
+
+The entrypoint lives at `cmd/envkeep/main.go` (standard Go layout), and the
+command logic is the `internal/cli` package — kept distinct in name from the
+`cmd/` binary directory to avoid a "cmd" overload.
 
 ## VaultStore interface (D17)
 

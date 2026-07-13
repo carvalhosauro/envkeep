@@ -74,7 +74,7 @@ cover-html: cover
 
 ## build: build the CLI into ./bin
 build:
-	go build -o $(BIN)/envkeep .
+	go build -o $(BIN)/envkeep ./cmd/envkeep
 
 ## clean: remove build + coverage artifacts (tools kept)
 clean:

@@ -1,6 +1,6 @@
-// Package cmd wires the pure layers (envfile, vault, state, config) together
+// Package cli wires the pure layers (envfile, vault, state, config) together
 // with git discovery to implement the status/push/pull commands.
-package cmd
+package cli
 
 import (
 	"errors"

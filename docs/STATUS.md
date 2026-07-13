@@ -164,3 +164,8 @@ Still open:
   driving the built binary: push from wt-a excluded the override PORT, wt-b pull
   got the shared vars plus its own PORT — the propagation + per-worktree-port
   pain, solved. Lint clean, cmd ~67%. Only the shell hook (step 6) remains.
+- **2026-07-12 · Layout: entrypoint to `cmd/envkeep/`, `internal/cmd` →
+  `internal/cli`.** Moved `main.go` to `cmd/envkeep/main.go` (standard Go layout,
+  user preference) and renamed the command package to `internal/cli` so the
+  `cmd/` binary directory and the logic package don't both mean "cmd". Makefile
+  build target now points at `./cmd/envkeep`. History preserved via `git mv`.
