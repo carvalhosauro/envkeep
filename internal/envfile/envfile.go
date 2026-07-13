@@ -45,10 +45,16 @@ type File struct {
 	index map[string]*line // key -> its (last) KV line
 }
 
+// New returns an empty File ready for Set/Render. Use it to synthesize a file
+// from scratch (e.g. rendering the vault) so the same quoting logic is reused.
+func New() *File {
+	return &File{index: map[string]*line{}}
+}
+
 // Parse reads an .env file. It returns an error with a 1-based line number on
 // malformed input (bad key, unterminated quote, missing '=').
 func Parse(data []byte) (*File, error) {
-	f := &File{index: map[string]*line{}}
+	f := New()
 	sc := bufio.NewScanner(bytes.NewReader(data))
 	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	n := 0

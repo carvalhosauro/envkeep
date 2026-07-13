@@ -7,7 +7,7 @@ Append to the log at the end of any working session.
 ## Current phase
 
 **Phase 0 (Design & docs) — complete. Phase 1 (v1 MVP) — in progress
-(steps 1–3 of 6 done).**
+(steps 1–4 of 6 done).**
 
 Repo initialized (`git`, `go mod` = `github.com/carvalhosauro/envkeep`, Go
 1.26). DX toolchain in place (D19). Golden-set fixture generator and the core
@@ -26,17 +26,15 @@ recorded in [`DECISIONS.md`](DECISIONS.md).
 
 ## Next action
 
-Continue Phase 1 at build step 4 — see [`ROADMAP.md`](ROADMAP.md):
+Continue Phase 1 at build step 5 — see [`ROADMAP.md`](ROADMAP.md):
 
-4. `internal/vault` — `VaultStore` interface (D17) + flatfile impl, atomic write
-   (temp + rename), vault named after the tracked file (D12). Reads/writes an
-   `envfile.Env`.
-5. `internal/state` + `internal/cmd` — base marker, status/push/pull, mtime cache.
+5. `internal/state` + `internal/cmd` — per-worktree base marker (vault hash +
+   mtimes, in the worktree gitdir, D5), then `status`/`push`/`pull` wiring
+   config + git + vault + envfile, with conflict detection and the mtime cache.
 6. `internal/hook` — shell snippet emitter.
 
-Done: step 1 (`scripts/mkfixture.sh`, normal + bare, verified), step 2
-(`internal/envfile`, 96.1%), step 3 (`internal/git`, 70.6% — real-git tests via
-the fixture).
+Done: step 1 (`scripts/mkfixture.sh`), step 2 (`internal/envfile`, 96.1%),
+step 3 (`internal/git`, 73.8%), step 4 (`internal/vault`, 81.1%).
 
 ## Open items to settle at implementation time
 
@@ -123,3 +121,11 @@ the fixture).
   envkeep's own repo instead of the fixture. Fixed by scrubbing `GIT_*` from the
   git wrapper's child env (`sanitizedEnv`) and unsetting them in `mkfixture.sh` —
   envkeep now always resolves the repo from the path it is pointed at.
+- **2026-07-12 · Phase 1 step 4.** `internal/vault`: tiny `Store` interface
+  (Read/Write, D17) + `FileStore` flat-file impl. `Read` returns `ErrNotFound`
+  for a missing vault (the "fresh" state, distinct from an empty vault). `Write`
+  is atomic (temp file + rename, 0600, D3), emits keys sorted for stable diffs,
+  and reuses the envfile renderer for correct quoting. Added `envfile.New()` to
+  synthesize a file from scratch. `vault.Path(commonDir, filename)` centralizes
+  the on-disk layout and names the vault after the tracked file (D12). Lint
+  clean, 81.1% coverage.
