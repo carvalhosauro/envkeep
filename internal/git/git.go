@@ -56,23 +56,6 @@ func Locate(dir string) (Paths, error) {
 	}, nil
 }
 
-// CommonDir returns the absolute shared git directory for the repo containing
-// dir. Every worktree of a repo — including linked worktrees and the bare-repo
-// (.bare/) layout — resolves to the same value; it is where envkeep stores the
-// vault (D3). The path is always absolute (D13).
-func CommonDir(dir string) (string, error) {
-	// Preferred: git 2.31+ can emit an absolute path directly.
-	if out, err := run(dir, "rev-parse", "--path-format=absolute", "--git-common-dir"); err == nil {
-		return out, nil
-	}
-	// Fallback for older git: the raw value may be relative to dir.
-	out, err := run(dir, "rev-parse", "--git-common-dir")
-	if err != nil {
-		return "", err
-	}
-	return absUnder(dir, out), nil
-}
-
 // Dir returns the absolute per-worktree git directory for the worktree
 // containing dir (e.g. .git/worktrees/<name> for a linked worktree, .git for
 // the main one). This is where a worktree's private state — the sync base
@@ -86,12 +69,6 @@ func Dir(dir string) (string, error) {
 		return "", err
 	}
 	return absUnder(dir, out), nil
-}
-
-// Toplevel returns the absolute root of the worktree containing dir — the
-// directory the tracked .env lives in.
-func Toplevel(dir string) (string, error) {
-	return run(dir, "rev-parse", "--show-toplevel")
 }
 
 // Worktrees lists every worktree of the repo containing dir, queried live so it

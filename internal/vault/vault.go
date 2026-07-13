@@ -48,11 +48,6 @@ func NewFileStore(path string) *FileStore {
 	return &FileStore{path: path}
 }
 
-// Path returns the backing file path.
-func (s *FileStore) Path() string {
-	return s.path
-}
-
 // Read loads the vault. It returns ErrNotFound if the file does not exist.
 func (s *FileStore) Read() (envfile.Env, error) {
 	data, err := os.ReadFile(s.path)

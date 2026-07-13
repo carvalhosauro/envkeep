@@ -8,13 +8,6 @@ import "maps"
 // terms of it.
 type Env map[string]string
 
-// Clone returns a shallow copy. The result is non-nil even for a nil receiver.
-func (e Env) Clone() Env {
-	out := make(Env, len(e))
-	maps.Copy(out, e)
-	return out
-}
-
 // Equal reports whether two sets have identical keys and values.
 func (e Env) Equal(other Env) bool {
 	return maps.Equal(e, other)

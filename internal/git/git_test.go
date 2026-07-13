@@ -39,65 +39,42 @@ func fixture(t *testing.T, bare bool) map[string]string {
 	return kv
 }
 
-func TestCommonDirNormal(t *testing.T) {
-	f := fixture(t, false)
-	got, err := CommonDir(f["WT_A"])
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != f["COMMON_DIR"] {
-		t.Errorf("CommonDir = %q, want %q", got, f["COMMON_DIR"])
-	}
-	if !filepath.IsAbs(got) {
-		t.Errorf("CommonDir not absolute: %q", got)
-	}
-}
-
-func TestCommonDirBareResolvesToDotBare(t *testing.T) {
-	f := fixture(t, true)
-	// The whole bare-repo premise (D13): common dir from a linked worktree must
-	// resolve to the shared .bare directory.
-	for _, from := range []string{f["WT_A"], f["WT_B"], f["MAIN"]} {
-		got, err := CommonDir(from)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got != f["COMMON_DIR"] {
-			t.Errorf("CommonDir(%q) = %q, want %q", from, got, f["COMMON_DIR"])
-		}
-		if filepath.Base(got) != ".bare" {
-			t.Errorf("CommonDir = %q, want it to end in .bare", got)
-		}
-	}
-}
-
-func TestLocateMatchesIndividualQueries(t *testing.T) {
+func TestLocateResolvesAllThreePaths(t *testing.T) {
 	for _, bare := range []bool{false, true} {
 		f := fixture(t, bare)
 		p, err := Locate(f["WT_A"])
 		if err != nil {
 			t.Fatal(err)
 		}
-		common, _ := CommonDir(f["WT_A"])
-		dir, _ := Dir(f["WT_A"])
-		top, _ := Toplevel(f["WT_A"])
-		if p.CommonDir != common || p.GitDir != dir || p.Toplevel != top {
-			t.Errorf("bare=%v Locate = %+v, want {%s %s %s}", bare, p, common, dir, top)
+		gitDir, err := Dir(f["WT_A"])
+		if err != nil {
+			t.Fatal(err)
 		}
-		if p.CommonDir != f["COMMON_DIR"] {
-			t.Errorf("bare=%v Locate.CommonDir = %q, want %q", bare, p.CommonDir, f["COMMON_DIR"])
+		if p.CommonDir != f["COMMON_DIR"] || p.GitDir != gitDir || p.Toplevel != f["WT_A"] {
+			t.Errorf("bare=%v Locate = %+v, want {common:%q gitdir:%q top:%q}",
+				bare, p, f["COMMON_DIR"], gitDir, f["WT_A"])
+		}
+		if !filepath.IsAbs(p.CommonDir) || !filepath.IsAbs(p.GitDir) || !filepath.IsAbs(p.Toplevel) {
+			t.Errorf("bare=%v Locate paths not all absolute: %+v", bare, p)
 		}
 	}
 }
 
-func TestToplevel(t *testing.T) {
-	f := fixture(t, false)
-	got, err := Toplevel(f["WT_A"])
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != f["WT_A"] {
-		t.Errorf("Toplevel = %q, want %q", got, f["WT_A"])
+func TestLocateBareResolvesToDotBare(t *testing.T) {
+	f := fixture(t, true)
+	// Bare-repo premise (D13): every worktree resolves to the same shared .bare
+	// common dir.
+	for _, from := range []string{f["WT_A"], f["WT_B"], f["MAIN"]} {
+		p, err := Locate(from)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p.CommonDir != f["COMMON_DIR"] {
+			t.Errorf("Locate(%q).CommonDir = %q, want %q", from, p.CommonDir, f["COMMON_DIR"])
+		}
+		if filepath.Base(p.CommonDir) != ".bare" {
+			t.Errorf("CommonDir = %q, want it to end in .bare", p.CommonDir)
+		}
 	}
 }
 

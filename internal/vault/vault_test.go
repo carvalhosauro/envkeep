@@ -34,11 +34,12 @@ func TestWriteThenReadRoundTrip(t *testing.T) {
 }
 
 func TestWriteIsSortedAndQuoted(t *testing.T) {
-	s := NewFileStore(filepath.Join(t.TempDir(), ".env"))
+	path := filepath.Join(t.TempDir(), ".env")
+	s := NewFileStore(path)
 	if err := s.Write(envfile.Env{"B": "2", "A": "a b", "C": "3"}); err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(s.Path())
+	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +64,8 @@ func TestWriteEmptyEnvIsNotFresh(t *testing.T) {
 }
 
 func TestWriteOverwritesAtomically(t *testing.T) {
-	s := NewFileStore(filepath.Join(t.TempDir(), ".env"))
+	path := filepath.Join(t.TempDir(), ".env")
+	s := NewFileStore(path)
 	if err := s.Write(envfile.Env{"A": "1", "OLD": "x"}); err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +80,7 @@ func TestWriteOverwritesAtomically(t *testing.T) {
 		t.Errorf("after overwrite = %v, want {A:2}", got)
 	}
 	// No stray temp files left behind.
-	entries, _ := os.ReadDir(filepath.Dir(s.Path()))
+	entries, _ := os.ReadDir(filepath.Dir(path))
 	if len(entries) != 1 {
 		t.Errorf("dir has %d entries, want 1 (the vault)", len(entries))
 	}

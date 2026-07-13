@@ -16,9 +16,12 @@ func TestLoadMissingReturnsDefault(t *testing.T) {
 	}
 }
 
-func TestSaveLoadRoundTrip(t *testing.T) {
+func TestLoadReadsConfiguredEnvFile(t *testing.T) {
 	dir := t.TempDir()
-	if err := Save(dir, Config{EnvFile: ".env.local"}); err != nil {
+	if err := os.MkdirAll(filepath.Dir(Path(dir)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(Path(dir), []byte("env_file=.env.local\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := Load(dir)

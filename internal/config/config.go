@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 
 	"github.com/carvalhosauro/envkeep/internal/envfile"
-	"github.com/carvalhosauro/envkeep/internal/fsutil"
 )
 
 const (
@@ -50,11 +49,4 @@ func Load(commonDir string) (Config, error) {
 		cfg.EnvFile = v
 	}
 	return cfg, nil
-}
-
-// Save writes the repo config.
-func Save(commonDir string, cfg Config) error {
-	f := envfile.New()
-	f.Set("env_file", cfg.EnvFile)
-	return fsutil.WriteFileAtomic(Path(commonDir), f.Render(), 0o644)
 }
