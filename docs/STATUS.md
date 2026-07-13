@@ -210,3 +210,16 @@ Still open:
   workflow now runs tests before publishing, and the changelog is grouped by
   conventional-commit type. Released **v0.1.0** earlier this session (curl + go
   install both verified live).
+- **2026-07-13 · Stale-marker `diverged` deadlock fixed (D22, issues #1 + #4).**
+  A marker base older than a value both sides now share made `Classify` report
+  `diverged` while `pull`/`push` bailed on the empty delta without refreshing the
+  marker — stuck forever. `Classify` now returns `Clean` when local and vault
+  agree (before the base comparison), so the false state is structurally
+  impossible for every command; `pull`/`push`/`check` retire the stale base
+  (rewrite marker to the current vault + refreshed mtimes) so it can't recur and
+  the mtime fast path is restored; `status` stays read-only. Rejected #4's
+  proposed `Local/VaultHash` marker fields as redundant — the full base (D5) is
+  already stored and the file is parsed on any mtime miss regardless, so
+  `env.Equal(base)` answers exactly what a hash would, with no schema bump or
+  legacy-marker migration. Verified end-to-end against a real git fixture and the
+  built binary; regression tests cover pull/push/check/status + mtime-bump.

@@ -350,3 +350,37 @@ injection (low value, high test complexity).
 surface, or a fallback path becomes reachable), adjust its override in
 `.testcoverage.yml`.
 **Status:** ACCEPTED.
+
+## D22 — Content agreement is Clean; stale bases are retired, not hashed
+
+**Decision:** `envfile.Classify` returns `Clean` whenever local and vault agree
+as logical sets, before the 3-way comparison against the base runs — if the two
+sides are identical there is nothing to merge, so the base's age is irrelevant.
+On top of that, the write commands (`pull`/`push`) and the per-worktree hook
+(`check`) *retire a stale base*: when they observe agreement they rewrite the
+marker with the current vault as the base (and refreshed mtimes) so the false
+state cannot recur and the mtime fast path is restored. `status` stays
+read-only — it reports the now-correct `clean` but does not mutate any marker;
+the worktree self-heals on its next `check`/`pull`/`push`.
+**Why:** A marker base that predates a value both sides now share made `Classify`
+return `Diverged` even though local and vault were identical, and the empty-delta
+early returns in `pull`/`push` bailed without refreshing the marker — a
+stuck-forever `diverged` (issue #1). Judging agreement first makes that state
+structurally impossible for every command in one place; retiring the base keeps
+a *subsequent* edit from being misjudged against the stale base (which would look
+like a conflict).
+**Rejected:** Adding `LocalHash`/`VaultHash` to the marker as a git-style
+stat+hash cache (issue #4's proposed mechanism). Git stores only the blob hash
+in its index, so a hash is its *only* content record; envkeep already stores the
+**full** base (D5), which it needs for the per-key conflict check a hash cannot
+drive. On an mtime miss the file must be parsed either way, and once parsed
+`env.Equal(base)` answers exactly what a hash would — the parse already
+normalizes comments/order/whitespace. A hash field would duplicate information
+derived from the base it sits beside, for zero behavioural gain, plus a schema
+bump and legacy-marker handling. It delivers #4's *acceptance criteria* (touch-
+without-change stays clean and refreshes the cache; content-agrees never
+diverges; old markers keep working with no migration) via the full base instead.
+**Reconsider-trigger:** If the marker ever stops storing the full base (e.g. to
+shrink it, keeping full values only for the conflict path), a stored content
+hash for the cheap "did this side change?" check becomes worth its keep.
+**Status:** ACCEPTED.
