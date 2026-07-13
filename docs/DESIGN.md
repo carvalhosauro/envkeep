@@ -63,7 +63,7 @@ internal/vault/         # Store interface (D17) + flatfile implementation
 internal/state/         # base-marker read/write (conflict + cache)
 internal/fsutil/        # shared atomic file write
 internal/cli/           # status / push / pull (wires everything together)
-internal/hook/          # emits the zsh chpwd / bash cd-trap snippet (pending)
+internal/hook/          # emits the zsh chpwd / bash cd-trap snippet (D7)
 scripts/mkfixture.sh    # golden-set fixture generator (D18)
 ```
 
@@ -125,8 +125,17 @@ per-key pick. No automatic merge in v1 — detection + refusal is the safety.
 The base marker's stored mtimes drive a cache so the common case costs almost
 nothing:
 
-1. **Shell-side (in the hook):** `stat` the local `.env` mtime; if unchanged
-   since the last check, never even spawn the binary. Zero-cost prompt.
+1. **Shell-side (in the hook, implemented #10):** `stat` the local `.env` mtime;
+   if unchanged since the last check of this directory *and* that check was clean
+   (a conservative per-directory cache the snippet keeps), never even spawn the
+   binary. In zsh the stat is the `zsh/stat` builtin — a genuinely zero-spawn
+   prompt (~85× cheaper than launching `envkeep check` on the clean path).
+   Scope/limits: guards the default `.env` only (a custom `env_file` repo the
+   shell can't cheaply resolve falls through to the binary); mtime is
+   second-resolution, so an in-place edit within the same wall-clock second as a
+   clean check is caught on the next `cd`, not immediately; a vault-only change
+   while the local `.env` is untouched is likewise re-detected on the next `cd`,
+   `.env` edit, or fresh shell — layer 2 remains the source of truth.
 2. **Binary-side:** on spawn, `stat` both `.env` and the vault, compare to the
    stored mtimes; if neither moved, print `clean` and exit **without parsing**.
    Parse + 3-way diff only run when an mtime actually changed.
@@ -147,10 +156,12 @@ best-effort — decide when implementing `internal/envfile`).
 
 `envkeep hook zsh|bash` prints a snippet to source in `.zshrc` / `.bashrc`:
 
-- zsh: registers a `chpwd` function; bash: wraps `cd` (or guards
-  `PROMPT_COMMAND` by comparing `$PWD`).
-- The snippet applies the shell-side mtime guard before calling
-  `envkeep status --quiet`, so unchanged worktrees never spawn the binary.
-- On drift, print one discreet line; optionally offer to sync.
-- `precmd`/`PROMPT_COMMAND` (every-prompt) variant is opt-in for users who edit
-  `.env` in place without leaving the directory.
+- zsh: registers a `chpwd` function; bash: guards `PROMPT_COMMAND` by comparing
+  `$PWD` (acts only on a directory change).
+- The snippet applies the shell-side mtime guard (layer 1 above) before calling
+  `envkeep check`, so unchanged, previously-clean worktrees never spawn the
+  binary. bash's per-directory cache needs associative arrays (bash 4+); the
+  macOS system bash 3.2 transparently falls back to a plain per-`$PWD` guard.
+- On drift, print one discreet line (`envkeep check`'s own message).
+- Editing `.env` in place without leaving the directory is caught on the next
+  `cd`; a true every-prompt variant remains a possible opt-in follow-up.

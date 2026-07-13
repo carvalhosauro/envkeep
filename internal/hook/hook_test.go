@@ -10,7 +10,9 @@ func TestSnippetZsh(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"add-zsh-hook chpwd", "envkeep check"} {
+	// chpwd trigger, the binary call, and the shell-side mtime guard (D7 layer 1):
+	// a zstat read plus the per-directory clean cache that lets it skip the spawn.
+	for _, want := range []string{"add-zsh-hook chpwd", "envkeep check", "zstat", "_envkeep_mtime", "_envkeep_clean"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("zsh snippet missing %q", want)
 		}
@@ -22,7 +24,9 @@ func TestSnippetBash(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"PROMPT_COMMAND", "envkeep check", "$PWD"} {
+	// PROMPT_COMMAND trigger, the $PWD guard, the binary call, and the shell-side
+	// mtime guard (bash 4+ associative-array cache with a 3.x fallback).
+	for _, want := range []string{"PROMPT_COMMAND", "envkeep check", "$PWD", "BASH_VERSINFO", "_ENVKEEP_MT"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("bash snippet missing %q", want)
 		}

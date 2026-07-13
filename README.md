@@ -98,6 +98,11 @@ eval "$(envkeep hook zsh)"
 Warns discreetly when you `cd` into a worktree whose `.env` has drifted from the
 vault. Silent when in sync.
 
+The snippet carries a shell-side mtime guard: entering a worktree whose `.env`
+has not moved since a clean check skips launching the binary entirely (in zsh
+via a `stat` builtin — no process spawn at all). It guards the default `.env`;
+repos with a custom `env_file` still spawn the binary, which resolves the config.
+
 ### Per-worktree overrides
 
 Values that must differ between worktrees (e.g. the dev-server port) go in an
