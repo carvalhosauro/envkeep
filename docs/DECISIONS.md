@@ -82,6 +82,14 @@ every time"), then reinstated once conflict detection was taken seriously — a
 correction. Recorded so no future session re-drops it for the same wrong
 reason.*
 
+*Follow-up refinement (step 5): the marker stores the base as the full env
+snapshot (a small JSON file), not merely a hash. Building the commands showed a
+hash can only answer "did this side change?" — it cannot drive the per-key
+conflict-vs-mergeable-divergence distinction, nor let push detect that another
+worktree changed a specific key. The base content is required for both. The
+original spec explicitly sanctioned "a small JSON alongside the vault" for this
+state. mtimes still live in the same marker for the cache.*
+
 ## D6 — CLI framework: stdlib `flag` + manual subcommand dispatch
 
 **Decision:** Use the standard library, one `FlagSet` per subcommand.

@@ -3,35 +3,19 @@ package state
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/carvalhosauro/envkeep/internal/envfile"
 )
 
-func TestHashEnvStableAndOrderIndependent(t *testing.T) {
-	a := envfile.Env{"A": "1", "B": "2"}
-	b := envfile.Env{"B": "2", "A": "1"} // same content, different insertion
-	if HashEnv(a) != HashEnv(b) {
-		t.Error("HashEnv not order-independent")
-	}
-	if HashEnv(a) == HashEnv(envfile.Env{"A": "1", "B": "3"}) {
-		t.Error("HashEnv collided on differing values")
-	}
-}
-
-func TestHashEnvNoBoundaryCollision(t *testing.T) {
-	// Without length-prefixing, {"A":"B=1"} and {"A":"B", "":"1"}-style shifts
-	// could collide. These two must differ.
-	x := HashEnv(envfile.Env{"AB": "C"})
-	y := HashEnv(envfile.Env{"A": "BC"})
-	if x == y {
-		t.Error("HashEnv collided across the key/value boundary")
-	}
-}
-
 func TestSaveLoadRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	want := Marker{VaultHash: "deadbeef", LocalMTime: 111, VaultMTime: 222}
+	want := Marker{
+		Base:       envfile.Env{"A": "1", "B": "hello world"},
+		LocalMTime: 111,
+		VaultMTime: 222,
+	}
 	if err := Save(dir, want); err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +26,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	if !ok {
 		t.Fatal("Load ok = false after Save")
 	}
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Load = %+v, want %+v", got, want)
 	}
 }
@@ -59,7 +43,7 @@ func TestLoadMissingIsNotError(t *testing.T) {
 
 func TestLoadMalformedErrors(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(Path(dir), []byte("local_mtime=not-a-number\n"), 0o600); err != nil {
+	if err := os.WriteFile(Path(dir), []byte("{not valid json"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := Load(dir); err == nil {
