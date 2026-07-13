@@ -1,5 +1,10 @@
 # envkeep
 
+[![ci](https://github.com/carvalhosauro/envkeep/actions/workflows/ci.yml/badge.svg)](https://github.com/carvalhosauro/envkeep/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/carvalhosauro/envkeep)](https://github.com/carvalhosauro/envkeep/releases)
+[![Go Report Card](https://goreportcard.com/badge/github.com/carvalhosauro/envkeep)](https://goreportcard.com/report/github.com/carvalhosauro/envkeep)
+[![license](https://img.shields.io/github/license/carvalhosauro/envkeep)](LICENSE)
+
 Keep `.env` files in sync across the git worktrees of one repository.
 
 > Status: **v1 (MVP) complete** — `status`/`push`/`pull`/`check` + shell hook
