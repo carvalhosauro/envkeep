@@ -3,7 +3,6 @@
 coverage.out
 coverage.html
 *.test
-envkeep
 
 # OS / editor
 .DS_Store
