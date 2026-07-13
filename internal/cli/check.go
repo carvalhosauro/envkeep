@@ -43,12 +43,12 @@ func assess(cwd string) (stateStr, envFile string, report bool) {
 	if err != nil {
 		return "", "", false
 	}
-	vaultEnv, vaultExists, err := readVault(ctx)
-	if err != nil || !vaultExists {
-		return "", "", false
-	}
 	localMTime, localExists := mtimeNanos(ctx.LocalPath)
 	if !localExists {
+		return "", "", false
+	}
+	vaultMTime, vaultExists := mtimeNanos(ctx.VaultPath)
+	if !vaultExists {
 		return "", "", false
 	}
 	marker, hasMarker, err := state.Load(ctx.GitDir)
@@ -60,11 +60,18 @@ func assess(cwd string) (stateStr, envFile string, report bool) {
 	}
 
 	// mtime fast path: nothing moved since the last sync → definitely clean.
-	vaultMTime, _ := mtimeNanos(ctx.VaultPath)
+	// This is the path the prompt hook hits on every render, so it must parse
+	// nothing — not even the vault (D7). The vault read is deferred to the miss
+	// case below, so its cost scales with edits, not with prompt renders (#6).
 	if localMTime == marker.LocalMTime && vaultMTime == marker.VaultMTime {
 		return "", "", false
 	}
 
+	// mtime miss: now the actual content must be read and compared.
+	vaultEnv, vaultOK, err := readVault(ctx)
+	if err != nil || !vaultOK {
+		return "", "", false
+	}
 	localEnv, _, err := readEnv(ctx.LocalPath)
 	if err != nil {
 		return "", "", false

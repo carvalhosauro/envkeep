@@ -80,6 +80,20 @@ func TestCheckSilentOutsideRepo(t *testing.T) {
 	}
 }
 
+func TestCheckSilentWhenNoVault(t *testing.T) {
+	f := fixture(t)
+	// A worktree with a local .env but no vault yet (nobody has pushed): there
+	// is nothing to compare against, so check stays silent — and post-#6 it
+	// reaches that verdict via a cheap stat, without reading the vault.
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=v1\n")
+	if out := check(t, f["WT_A"]); out != "" {
+		t.Errorf("check with no vault should be silent, got %q", out)
+	}
+	if out := checkPorcelain(t, f["WT_A"]); out != "" {
+		t.Errorf("porcelain check with no vault should be silent, got %q", out)
+	}
+}
+
 func contains(s, sub string) bool {
 	return bytes.Contains([]byte(s), []byte(sub))
 }
