@@ -7,7 +7,7 @@ Append to the log at the end of any working session.
 ## Current phase
 
 **Phase 0 (Design & docs) — complete. Phase 1 (v1 MVP) — in progress
-(steps 1–2 of 6 done).**
+(steps 1–3 of 6 done).**
 
 Repo initialized (`git`, `go mod` = `github.com/carvalhosauro/envkeep`, Go
 1.26). DX toolchain in place (D19). Golden-set fixture generator and the core
@@ -26,17 +26,17 @@ recorded in [`DECISIONS.md`](DECISIONS.md).
 
 ## Next action
 
-Continue Phase 1 at build step 3 — see [`ROADMAP.md`](ROADMAP.md):
+Continue Phase 1 at build step 4 — see [`ROADMAP.md`](ROADMAP.md):
 
-3. `internal/git` — common dir resolved absolute (D13), worktree list from
-   `--porcelain` (D4), per-worktree gitdir. First package that uses real git;
-   test it with `scripts/mkfixture.sh` (normal + bare).
-4. `internal/vault` — `VaultStore` interface + flatfile impl, atomic write.
+4. `internal/vault` — `VaultStore` interface (D17) + flatfile impl, atomic write
+   (temp + rename), vault named after the tracked file (D12). Reads/writes an
+   `envfile.Env`.
 5. `internal/state` + `internal/cmd` — base marker, status/push/pull, mtime cache.
 6. `internal/hook` — shell snippet emitter.
 
 Done: step 1 (`scripts/mkfixture.sh`, normal + bare, verified), step 2
-(`internal/envfile`, 96.1% coverage).
+(`internal/envfile`, 96.1%), step 3 (`internal/git`, 70.6% — real-git tests via
+the fixture).
 
 ## Open items to settle at implementation time
 
@@ -109,3 +109,17 @@ Done: step 1 (`scripts/mkfixture.sh`, normal + bare, verified), step 2
   (D5). Pure, no git. Lint clean, 96.1% coverage. Note: `Diverged` (both changed
   but mergeable) is a refinement beyond the DESIGN table's binary
   both-changed→conflict; kept because it's strictly more precise.
+- **2026-07-12 · Phase 1 step 3.** `internal/git` shells out to real git:
+  `CommonDir` and `Dir` (both forced absolute via `--path-format=absolute`, with
+  an older-git fallback that resolves relative paths — D13), `Toplevel`, and
+  `Worktrees` (porcelain parse, live per D4). Integration-tested through
+  `mkfixture.sh` for normal and bare layouts; the bare test asserts the common
+  dir resolves to `.bare` from every worktree. `GitDir` renamed to `Dir` (revive:
+  `git.GitDir` stutters; now pairs with `CommonDir`, mirroring the git flags).
+  Lint clean, 73.8% coverage (remainder = the older-git fallback branches, not
+  reachable with the installed git). Caught a real robustness bug while
+  committing: git hooks export `GIT_DIR`/`GIT_WORK_TREE`, which nested git
+  commands inherit and which override `cmd.Dir`, so the tests operated on
+  envkeep's own repo instead of the fixture. Fixed by scrubbing `GIT_*` from the
+  git wrapper's child env (`sanitizedEnv`) and unsetting them in `mkfixture.sh` —
+  envkeep now always resolves the repo from the path it is pointed at.

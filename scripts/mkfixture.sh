@@ -13,6 +13,11 @@
 #   ROOT, MODE, MAIN, WT_A, WT_B, COMMON_DIR
 set -euo pipefail
 
+# Be hermetic: a caller inside a git hook (or another git command) exports
+# GIT_DIR/GIT_WORK_TREE/… which would otherwise hijack the git commands below
+# and point them at the wrong repo. Clear them so this fixture is self-contained.
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_PREFIX GIT_NAMESPACE
+
 # Deterministic, isolated git identity — never touch the user's global config.
 git_() {
 	git -c user.email=envkeep@test.local \
