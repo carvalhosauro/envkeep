@@ -22,6 +22,40 @@ type Worktree struct {
 	Detached bool
 }
 
+// Paths bundles the three repo locations a command needs.
+type Paths struct {
+	CommonDir string // shared git dir (vault lives here)
+	GitDir    string // per-worktree git dir (sync marker lives here)
+	Toplevel  string // worktree root (the .env lives here)
+}
+
+// Locate resolves all three paths for the worktree containing dir in a single
+// git invocation, rather than three. This keeps the per-prompt hook check cheap
+// (git process spawns dominate its cost). All paths are absolute (D13).
+func Locate(dir string) (Paths, error) {
+	const want = 3
+	if out, err := run(dir, "rev-parse", "--path-format=absolute",
+		"--git-common-dir", "--git-dir", "--show-toplevel"); err == nil {
+		if lines := strings.Split(out, "\n"); len(lines) == want {
+			return Paths{CommonDir: lines[0], GitDir: lines[1], Toplevel: lines[2]}, nil
+		}
+	}
+	// Fallback for older git without --path-format: resolve relative paths.
+	out, err := run(dir, "rev-parse", "--git-common-dir", "--git-dir", "--show-toplevel")
+	if err != nil {
+		return Paths{}, err
+	}
+	lines := strings.Split(out, "\n")
+	if len(lines) != want {
+		return Paths{}, fmt.Errorf("git rev-parse: expected %d paths, got %q", want, out)
+	}
+	return Paths{
+		CommonDir: absUnder(dir, lines[0]),
+		GitDir:    absUnder(dir, lines[1]),
+		Toplevel:  absUnder(dir, lines[2]),
+	}, nil
+}
+
 // CommonDir returns the absolute shared git directory for the repo containing
 // dir. Every worktree of a repo — including linked worktrees and the bare-repo
 // (.bare/) layout — resolves to the same value; it is where envkeep stores the

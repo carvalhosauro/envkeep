@@ -71,6 +71,25 @@ func TestCommonDirBareResolvesToDotBare(t *testing.T) {
 	}
 }
 
+func TestLocateMatchesIndividualQueries(t *testing.T) {
+	for _, bare := range []bool{false, true} {
+		f := fixture(t, bare)
+		p, err := Locate(f["WT_A"])
+		if err != nil {
+			t.Fatal(err)
+		}
+		common, _ := CommonDir(f["WT_A"])
+		dir, _ := Dir(f["WT_A"])
+		top, _ := Toplevel(f["WT_A"])
+		if p.CommonDir != common || p.GitDir != dir || p.Toplevel != top {
+			t.Errorf("bare=%v Locate = %+v, want {%s %s %s}", bare, p, common, dir, top)
+		}
+		if p.CommonDir != f["COMMON_DIR"] {
+			t.Errorf("bare=%v Locate.CommonDir = %q, want %q", bare, p.CommonDir, f["COMMON_DIR"])
+		}
+	}
+}
+
 func TestToplevel(t *testing.T) {
 	f := fixture(t, false)
 	got, err := Toplevel(f["WT_A"])

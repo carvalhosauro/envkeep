@@ -56,6 +56,9 @@ Still open:
 - `.env` parser multiline-value behavior: currently rejected (unterminated quote
   errors). Revisit only if a real `.env` needs multiline.
 - Binary distribution details (release/install) — Phase 2 concern.
+- Starship inline segment (Option B): would need `check --porcelain` (short
+  token output) + a `[custom.envkeep]` block. Latency groundwork now done (see
+  log); build when wanted.
 
 ## Log — how we got here
 
@@ -179,3 +182,14 @@ Still open:
   to stay cheap (D7). Verified end-to-end, including sourcing the bash snippet and
   firing the hook on cd. hook 100% / cli ~69% coverage, lint clean. This closes
   the "forgot to run the command" half of the success criterion — v1 done.
+- **2026-07-12 · Wired into the shell + git-call optimization.** Symlinked the
+  binary into `~/.local/bin` and added `eval "$(envkeep hook zsh)"` to the user's
+  dotfiles (zsh + starship + zim; message-on-cd = Option A). To keep the check
+  cheap enough to one day drive an inline starship segment (Option B), added
+  `git.Locate` which resolves common-dir + git-dir + toplevel in a **single**
+  `git rev-parse`. Measured (disposable shim + timing script, not committed):
+  the path-resolution step drops from **3 git process spawns to 1**, ~2.4–4x
+  faster (≈8–14 ms → ≈3–4 ms per call; variance is machine load). The mechanism
+  is process spawns (`fork`+`exec`), not the queries. The earlier "not the time
+  for perf" stance held until a real per-invocation cost (per-prompt use)
+  justified this narrow, measured optimization.

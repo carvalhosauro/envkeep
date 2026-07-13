@@ -35,19 +35,12 @@ type Context struct {
 // Resolve discovers the repo from cwd and builds the command context. envFileFlag
 // (may be "") takes precedence over the repo config, which defaults to .env.
 func Resolve(cwd, envFileFlag string) (*Context, error) {
-	commonDir, err := git.CommonDir(cwd)
+	// One git call for all three paths — keeps the per-prompt hook check cheap.
+	p, err := git.Locate(cwd)
 	if err != nil {
 		return nil, err
 	}
-	gitDir, err := git.Dir(cwd)
-	if err != nil {
-		return nil, err
-	}
-	top, err := git.Toplevel(cwd)
-	if err != nil {
-		return nil, err
-	}
-	cfg, err := config.Load(commonDir)
+	cfg, err := config.Load(p.CommonDir)
 	if err != nil {
 		return nil, err
 	}
@@ -55,14 +48,14 @@ func Resolve(cwd, envFileFlag string) (*Context, error) {
 	if envFileFlag != "" {
 		envFile = envFileFlag
 	}
-	vp := vault.Path(commonDir, envFile)
+	vp := vault.Path(p.CommonDir, envFile)
 	return &Context{
-		CommonDir:    commonDir,
-		GitDir:       gitDir,
-		Toplevel:     top,
+		CommonDir:    p.CommonDir,
+		GitDir:       p.GitDir,
+		Toplevel:     p.Toplevel,
 		EnvFile:      envFile,
-		LocalPath:    filepath.Join(top, envFile),
-		OverridePath: filepath.Join(top, envFile+overrideSuffix),
+		LocalPath:    filepath.Join(p.Toplevel, envFile),
+		OverridePath: filepath.Join(p.Toplevel, envFile+overrideSuffix),
 		VaultPath:    vp,
 		Vault:        vault.NewFileStore(vp),
 	}, nil
