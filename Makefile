@@ -15,7 +15,7 @@ export PATH            := $(BIN):$(PATH)
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X github.com/carvalhosauro/envkeep/internal/buildinfo.Version=$(VERSION)
 
-.PHONY: all setup tools hooks tidy fmt fmt-check lint vet test cover cover-check cover-html build install release-check snapshot clean help
+.PHONY: all setup tools hooks tidy fmt fmt-check lint vet test bench loadtest cover cover-check cover-html build install release-check snapshot clean help
 
 ## all: format, lint, test (default local loop)
 all: fmt lint test
@@ -68,6 +68,14 @@ vet:
 ## test: race-enabled test run
 test:
 	go test -race ./...
+
+## bench: run load-test benchmarks (scale via ENVKEEP_LOADTEST_KEYS / _WT)
+bench:
+	go test -run '^$$' -bench . -benchmem ./internal/cli/
+
+## loadtest: scale correctness + per-command timing (heavy; builds real git worktrees)
+loadtest:
+	ENVKEEP_LOADTEST=1 go test -run TestLoadScale -v ./internal/cli/
 
 ## cover: test with coverage profile + total summary
 cover:
