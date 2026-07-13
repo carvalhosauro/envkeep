@@ -6,11 +6,13 @@ Append to the log at the end of any working session.
 
 ## Current phase
 
-**Phase 0 (Design & docs) — complete. Phase 1 (v1 MVP) — scaffolding started.**
+**Phase 0 (Design & docs) — complete. Phase 1 (v1 MVP) — in progress
+(steps 1–2 of 6 done).**
 
 Repo initialized (`git`, `go mod` = `github.com/carvalhosauro/envkeep`, Go
-1.26). DX toolchain in place (D19). No *application* code yet — next is the
-fixture + `internal/envfile`. The design is settled and every decision is
+1.26). DX toolchain in place (D19). Golden-set fixture generator and the core
+`internal/envfile` package (parser + merge + diff + 3-way classify) are done and
+tested (envfile 96.1% coverage). The design is settled and every decision is
 recorded in [`DECISIONS.md`](DECISIONS.md).
 
 ## Done
@@ -24,14 +26,17 @@ recorded in [`DECISIONS.md`](DECISIONS.md).
 
 ## Next action
 
-Begin Phase 1 at build step 1–2 (the riskiest core + golden set) — see
-[`ROADMAP.md`](ROADMAP.md):
+Continue Phase 1 at build step 3 — see [`ROADMAP.md`](ROADMAP.md):
 
-1. `scripts/mkfixture.sh` — golden-set fixture generator (normal + bare layouts).
-2. `internal/envfile` — order/comment-preserving parser + union merge + 3-way
-   diff, with unit tests.
+3. `internal/git` — common dir resolved absolute (D13), worktree list from
+   `--porcelain` (D4), per-worktree gitdir. First package that uses real git;
+   test it with `scripts/mkfixture.sh` (normal + bare).
+4. `internal/vault` — `VaultStore` interface + flatfile impl, atomic write.
+5. `internal/state` + `internal/cmd` — base marker, status/push/pull, mtime cache.
+6. `internal/hook` — shell snippet emitter.
 
-Then git init the project + Go module scaffolding when implementation starts.
+Done: step 1 (`scripts/mkfixture.sh`, normal + bare, verified), step 2
+(`internal/envfile`, 96.1% coverage).
 
 ## Open items to settle at implementation time
 
@@ -94,3 +99,13 @@ Then git init the project + Go module scaffolding when implementation starts.
   `lefthook.yml`: pre-commit formats + re-stages staged Go then lint+test;
   pre-push race-test + build. Verified `bin/lefthook run pre-commit` green
   (format/lint/test). D19 status = REVISED with the native-hooks history kept.
+- **2026-07-12 · Phase 1 steps 1–2.** `scripts/mkfixture.sh` builds throwaway
+  real-git repos (normal + bare `.bare/`) with linked worktrees and prints their
+  paths + resolved common dir; verified bare resolves common dir to `.bare` and
+  normal to `main/.git` (D13 confirmed end-to-end). `internal/envfile`
+  implemented: layout-preserving parser (export/quotes/escapes/inline comments,
+  D11), `Union` + `ExcludeKeys` (D8/D9), `Diff`/`Delta`, and 3-way `Classify`
+  returning Clean/Ahead/Behind/Diverged/Conflict with per-key conflict detail
+  (D5). Pure, no git. Lint clean, 96.1% coverage. Note: `Diverged` (both changed
+  but mergeable) is a refinement beyond the DESIGN table's binary
+  both-changed→conflict; kept because it's strictly more precise.
