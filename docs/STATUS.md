@@ -137,3 +137,10 @@ step 3 (`internal/git`, 73.8%), step 4 (`internal/vault`, 81.1%).
   shifting characters across the '=' boundary. `Load` returns ok=false (nil err)
   when no marker exists yet. Pure file IO, no git needed. Lint clean, state 93.2%
   / vault 95.0%. `cmd` (status/push/pull) is next.
+- **2026-07-12 · Phase 1 step 5b (state refactor + config).** Reworked the
+  marker to store the **base env snapshot** (small JSON) instead of a hash — the
+  commands need base content for per-key conflict detection and for push to see
+  another worktree's per-key changes; a hash can't do that (D5 follow-up).
+  `HashEnv` dropped. Added `internal/config`: per-repo `env_file` at
+  `<common-dir>/envkeep/config` (default `.env`, D12), reusing the envfile
+  parser. Lint clean, state 85.7% / config 87.5%.
