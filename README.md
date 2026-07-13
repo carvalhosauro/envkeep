@@ -41,18 +41,37 @@ symptoms follow:
 
 ## Install
 
-Once the repo is published to GitHub, on any machine with Go:
+**No Go needed** — download a prebuilt binary (Linux/macOS, amd64/arm64):
+
+```sh
+curl -sSfL https://raw.githubusercontent.com/carvalhosauro/envkeep/main/install.sh | sh
+```
+
+Installs to `~/.local/bin` (override with `ENVKEEP_INSTALL_DIR`). Requires a
+published GitHub Release (see Releasing).
+
+**With Go**, build from source:
 
 ```sh
 go install github.com/carvalhosauro/envkeep/cmd/envkeep@latest
 ```
 
-That builds from source and drops `envkeep` in your Go bin (`go env GOBIN`, on
-your PATH). `envkeep version` then reports the installed module version. No repo
-clone needed.
+`envkeep version` reports the installed version. From a clone (development):
+`make install` (version stamped from `git describe`) or `make build` → `./bin`.
 
-From a clone (for development): `make install` (stamps the version from `git
-describe`), or `make build` to produce `./bin/envkeep`.
+## Releasing
+
+Releases are automated with [goreleaser](https://goreleaser.com). Push a
+semver tag and GitHub Actions builds the cross-platform binaries and publishes
+the Release:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Locally: `make release-check` validates the config; `make snapshot` dry-runs a
+build without publishing.
 
 ## Commands
 

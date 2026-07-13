@@ -4,14 +4,16 @@
 BIN                    := $(CURDIR)/bin
 GOLANGCI_LINT_VERSION  := v2.12.2
 LEFTHOOK_VERSION       := v2.1.10
+GORELEASER_VERSION     := v2.17.0
 GOLANGCI_LINT          := $(BIN)/golangci-lint
 LEFTHOOK               := $(BIN)/lefthook
+GORELEASER             := $(BIN)/goreleaser
 export PATH            := $(BIN):$(PATH)
 
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X github.com/carvalhosauro/envkeep/internal/buildinfo.Version=$(VERSION)
 
-.PHONY: all setup tools hooks tidy fmt fmt-check lint vet test cover cover-html build install clean help
+.PHONY: all setup tools hooks tidy fmt fmt-check lint vet test cover cover-html build install release-check snapshot clean help
 
 ## all: format, lint, test (default local loop)
 all: fmt lint test
@@ -82,6 +84,19 @@ build:
 ## install: install envkeep into GOBIN (on PATH via your Go toolchain)
 install:
 	go install -ldflags "$(LDFLAGS)" ./cmd/envkeep
+
+$(GORELEASER):
+	@mkdir -p $(BIN)
+	@echo ">> installing goreleaser $(GORELEASER_VERSION) -> $(BIN)"
+	@GOBIN=$(BIN) go install github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)
+
+## release-check: validate .goreleaser.yaml
+release-check: $(GORELEASER)
+	$(GORELEASER) check
+
+## snapshot: dry-run a release build (no publish, no tag needed)
+snapshot: $(GORELEASER)
+	$(GORELEASER) build --snapshot --clean --single-target
 
 ## clean: remove build + coverage artifacts (tools kept)
 clean:

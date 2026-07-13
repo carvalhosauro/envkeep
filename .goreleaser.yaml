@@ -1,0 +1,47 @@
+# goreleaser v2 — builds cross-platform binaries and publishes a GitHub Release.
+# Validate locally: make release-check ; dry-run a build: make snapshot
+version: 2
+
+project_name: envkeep
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: envkeep
+    main: ./cmd/envkeep
+    binary: envkeep
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/carvalhosauro/envkeep/internal/buildinfo.Version={{ .Version }}
+
+archives:
+  - id: envkeep
+    formats:
+      - tar.gz
+    # Must match install.sh: envkeep_<os>_<arch>.tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+release:
+  draft: false
