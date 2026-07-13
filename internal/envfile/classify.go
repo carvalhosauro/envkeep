@@ -13,8 +13,9 @@ const (
 	Ahead
 	// Behind means only the vault changed — pull fast-forwards local.
 	Behind
-	// Diverged means both changed, but on non-overlapping keys or in agreement,
-	// so the two sets can be merged without a decision.
+	// Diverged means both changed, on non-overlapping keys, so the two sets can
+	// be merged without a decision. (When both reach the *same* value there is
+	// nothing to merge — that is Clean, not Diverged.)
 	Diverged
 	// Conflict means both changed the same key(s) to different values.
 	Conflict
@@ -49,6 +50,14 @@ type KeyConflict struct {
 // plus, for Conflict, the per-key conflicts (sorted by key). The conflict slice
 // is nil for every non-Conflict status.
 func Classify(base, local, vault Env) (Status, []KeyConflict) {
+	// Local and vault already agree as logical sets: there is nothing to merge,
+	// so the worktree is clean no matter how stale the base is. This is what
+	// keeps a stale base from producing a false "diverged" (see issue #1/#4 and
+	// docs/DECISIONS.md D22).
+	if local.Equal(vault) {
+		return Clean, nil
+	}
+
 	localChanged := !base.Equal(local)
 	vaultChanged := !base.Equal(vault)
 

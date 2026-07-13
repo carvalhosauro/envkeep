@@ -75,6 +75,11 @@ func assess(cwd string) (stateStr, envFile string, report bool) {
 	}
 	st, _ := envfile.Classify(marker.Base, localEnv.Without(overrideEnv), vaultEnv)
 	if st == envfile.Clean {
+		// The mtime moved but the content is clean (unchanged, or reconverged
+		// with the vault from a stale base). Refresh the marker to retire a stale
+		// base and restore the mtime fast path. Ignore write errors — check must
+		// never fail or break the prompt.
+		_ = saveMarker(ctx, vaultEnv)
 		return "", "", false
 	}
 	return st.String(), ctx.EnvFile, true
