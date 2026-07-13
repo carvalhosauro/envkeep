@@ -28,11 +28,21 @@ func TestClassifyStates(t *testing.T) {
 			Diverged, 0,
 		},
 		{
-			"diverged same new value",
+			// Both sides moved A to the SAME value from a stale base: nothing to
+			// merge, so it is clean regardless of base age (issue #1/#4).
+			"reconverged to same value is clean",
 			m("A", "1"),
 			m("A", "2"),
-			m("A", "2"), // both moved A to the same value
-			Diverged, 0,
+			m("A", "2"),
+			Clean, 0,
+		},
+		{
+			// Agreement holds across multiple keys too, even with an empty base.
+			"reconverged multi-key is clean",
+			m(),
+			m("A", "2", "B", "3"),
+			m("A", "2", "B", "3"),
+			Clean, 0,
 		},
 		{
 			"conflict same key",

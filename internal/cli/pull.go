@@ -49,6 +49,13 @@ func Pull(w io.Writer, cwd, envFileFlag string, dryRun bool) error {
 	if hasMarker {
 		switch st, conflicts := envfile.Classify(marker.Base, localShared, vaultEnv); st {
 		case envfile.Clean:
+			// Content agrees with the vault. Retire a stale base so status/check
+			// stop reporting a false diverged and the mtime fast path is restored.
+			if !marker.Base.Equal(vaultEnv) {
+				if err := saveMarker(ctx, vaultEnv); err != nil {
+					return err
+				}
+			}
 			p.printf("already in sync; nothing to pull\n")
 			return p.err
 		case envfile.Ahead:
