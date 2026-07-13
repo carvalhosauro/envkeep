@@ -31,5 +31,11 @@ jobs:
       - name: Lint
         run: make lint
 
-      - name: Test + coverage
-        run: make cover
+      - name: Test + coverage thresholds
+        run: make cover-check
+
+      - name: Validate release config
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: check

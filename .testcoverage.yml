@@ -1,0 +1,27 @@
+# Coverage thresholds, enforced by go-test-coverage (make cover-check / CI).
+# Tiered on purpose: pure logic is held high, glue/entrypoint low or excluded.
+profile: coverage.out
+
+threshold:
+  file: 50 # floor for any single file
+  package: 70 # floor for any package
+  total: 75 # floor for the project
+
+# Per-package bars: higher for pure, easily-tested logic; lower where coverage
+# is naturally bounded (e.g. git fallback branches need an ancient git).
+override:
+  - { threshold: 90, path: internal/envfile }
+  - { threshold: 95, path: internal/hook }
+  - { threshold: 85, path: internal/vault }
+  - { threshold: 80, path: internal/state }
+  - { threshold: 80, path: internal/config }
+  - { threshold: 60, path: internal/git }
+  - { threshold: 65, path: internal/fsutil }
+
+# Excluded from coverage entirely: the CLI entrypoint is thin flag-dispatch
+# glue, and buildinfo is a version var + trivial init — testing them adds noise,
+# not confidence.
+exclude:
+  paths:
+    - cmd/envkeep
+    - internal/buildinfo

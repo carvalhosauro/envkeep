@@ -326,3 +326,27 @@ test); auto-merging conflicts by picking a side (silent data loss).
 confirm prompt are future polish; `--prune` (letting push delete vault keys the
 local env dropped) is deferred — union never deletes today (D8).
 **Status:** ACCEPTED.
+
+## D21 — Tiered coverage thresholds + release gating
+
+**Decision:** Coverage is enforced by `go-test-coverage` (`.testcoverage.yml`,
+`make cover-check`) with **tiered per-package thresholds**, not one global
+number: pure logic is held high (envfile 90, hook 95, vault 85, state/config
+80), glue where coverage is naturally bounded is held lower (git 60 — fallback
+branches need an ancient git; fsutil 65), and the thin CLI entrypoint
+(`cmd/envkeep`) plus the trivial `buildinfo` var are excluded entirely. CI runs
+`cover-check` and validates the goreleaser config; the release workflow runs the
+test suite before goreleaser publishes.
+**Why:** A single total-% bar is blunt — it lets well-testable logic rot while
+punishing glue whose remaining paths need exotic conditions (a missing binary, a
+read-only FS). Tiers encode the intended bar per package, so the gate means
+something. Excluding dispatch + a version var keeps the number honest rather than
+padded with trivial lines. Gating the release on tests prevents a bad tag from
+shipping binaries.
+**Rejected:** Total-only threshold (hides per-package rot); a uniform per-file
+hard bar (too rigid for glue); chasing 100% on error paths that need fault
+injection (low value, high test complexity).
+**Reconsider-trigger:** If a package's realistic ceiling moves (new testable
+surface, or a fallback path becomes reachable), adjust its override in
+`.testcoverage.yml`.
+**Status:** ACCEPTED.

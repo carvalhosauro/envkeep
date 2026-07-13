@@ -5,15 +5,17 @@ BIN                    := $(CURDIR)/bin
 GOLANGCI_LINT_VERSION  := v2.12.2
 LEFTHOOK_VERSION       := v2.1.10
 GORELEASER_VERSION     := v2.17.0
+GOTESTCOVERAGE_VERSION := v2.18.8
 GOLANGCI_LINT          := $(BIN)/golangci-lint
 LEFTHOOK               := $(BIN)/lefthook
 GORELEASER             := $(BIN)/goreleaser
+GOTESTCOVERAGE         := $(BIN)/go-test-coverage
 export PATH            := $(BIN):$(PATH)
 
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X github.com/carvalhosauro/envkeep/internal/buildinfo.Version=$(VERSION)
 
-.PHONY: all setup tools hooks tidy fmt fmt-check lint vet test cover cover-html build install release-check snapshot clean help
+.PHONY: all setup tools hooks tidy fmt fmt-check lint vet test cover cover-check cover-html build install release-check snapshot clean help
 
 ## all: format, lint, test (default local loop)
 all: fmt lint test
@@ -71,6 +73,15 @@ test:
 cover:
 	go test -race -covermode=atomic -coverprofile=coverage.out ./...
 	@go tool cover -func=coverage.out | tail -1
+
+$(GOTESTCOVERAGE):
+	@mkdir -p $(BIN)
+	@echo ">> installing go-test-coverage $(GOTESTCOVERAGE_VERSION) -> $(BIN)"
+	@GOBIN=$(BIN) go install github.com/vladopajic/go-test-coverage/v2@$(GOTESTCOVERAGE_VERSION)
+
+## cover-check: enforce tiered coverage thresholds (.testcoverage.yml)
+cover-check: cover $(GOTESTCOVERAGE)
+	$(GOTESTCOVERAGE) --config=.testcoverage.yml
 
 ## cover-html: render coverage.html from the profile
 cover-html: cover

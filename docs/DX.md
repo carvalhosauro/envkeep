@@ -22,6 +22,8 @@ Installs pinned tools into `./bin`, points git at the committed hooks, and runs
 | `make lint` | run all configured linters |
 | `make test` | `go test -race ./...` |
 | `make cover` | tests + coverage profile + total % |
+| `make cover-check` | enforce tiered coverage thresholds (`.testcoverage.yml`) |
+| `make release-check` / `make snapshot` | validate / dry-run the release build |
 | `make cover-html` | render `coverage.html` |
 | `make build` | build the CLI into `./bin/envkeep` |
 | `make help` | list all targets |

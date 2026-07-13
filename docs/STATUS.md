@@ -202,3 +202,11 @@ Still open:
   (headless render was flaky to verify; the cd-hook covers the need) — kept the
   cd hook in the user's zsh. Fixed a `.gitignore` bug where the bare `envkeep`
   pattern shadowed the `cmd/envkeep/` source dir.
+- **2026-07-13 · Release hardening + tiered coverage (D21).** Added
+  `go-test-coverage` with `.testcoverage.yml`: tiered per-package thresholds
+  (pure logic high, glue low, entrypoint/buildinfo excluded), total now 83.8%
+  (up from ~72% after adding cli scenario + fsutil tests). `make cover-check`
+  enforces it; CI runs it and validates the goreleaser config; the release
+  workflow now runs tests before publishing, and the changelog is grouped by
+  conventional-commit type. Released **v0.1.0** earlier this session (curl + go
+  install both verified live).
