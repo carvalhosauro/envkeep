@@ -89,5 +89,5 @@ func Save(gitDir string, m Marker) error {
 	if err != nil {
 		return fmt.Errorf("state: marshal: %w", err)
 	}
-	return fsutil.WriteFileAtomic(Path(gitDir), data, 0o600)
+	return fsutil.WriteFileAtomic(Path(gitDir), data, fsutil.SecretFilePerm)
 }

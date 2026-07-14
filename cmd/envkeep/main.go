@@ -12,6 +12,13 @@ import (
 	"github.com/carvalhosauro/envkeep/internal/hook"
 )
 
+// Process exit codes: 0 success, 1 runtime error, 2 usage/flag-parse error.
+const (
+	exitOK    = 0
+	exitError = 1
+	exitUsage = 2
+)
+
 func main() {
 	os.Exit(run(os.Args[1:]))
 }
@@ -19,12 +26,12 @@ func main() {
 func run(args []string) int {
 	if len(args) == 0 {
 		usage()
-		return 1
+		return exitError
 	}
 	switch args[0] {
 	case "version", "--version", "-v":
 		fmt.Println("envkeep", buildinfo.Version)
-		return 0
+		return exitOK
 	case "status":
 		return runStatus(args[1:])
 	case "push":
@@ -37,11 +44,11 @@ func run(args []string) int {
 		return runHook(args[1:])
 	case "help", "-h", "--help":
 		usage()
-		return 0
+		return exitOK
 	default:
 		fmt.Fprintf(os.Stderr, "envkeep: unknown command %q\n", args[0])
 		usage()
-		return 1
+		return exitError
 	}
 }
 
@@ -49,7 +56,7 @@ func runStatus(args []string) int {
 	fs := flag.NewFlagSet("status", flag.ContinueOnError)
 	file := fs.String("file", "", "tracked env filename (overrides repo config)")
 	if err := fs.Parse(args); err != nil {
-		return 2
+		return exitUsage
 	}
 	return dispatch(func(cwd string) error {
 		return cli.Status(os.Stdout, cwd, *file)
@@ -61,7 +68,7 @@ func runPush(args []string) int {
 	file := fs.String("file", "", "tracked env filename (overrides repo config)")
 	dry := fs.Bool("dry-run", false, "show what would change without writing")
 	if err := fs.Parse(args); err != nil {
-		return 2
+		return exitUsage
 	}
 	return dispatch(func(cwd string) error {
 		return cli.Push(os.Stdout, cwd, *file, *dry)
@@ -73,7 +80,7 @@ func runPull(args []string) int {
 	file := fs.String("file", "", "tracked env filename (overrides repo config)")
 	dry := fs.Bool("dry-run", false, "show what would change without writing")
 	if err := fs.Parse(args); err != nil {
-		return 2
+		return exitUsage
 	}
 	return dispatch(func(cwd string) error {
 		return cli.Pull(os.Stdout, cwd, *file, *dry)
@@ -84,7 +91,7 @@ func runCheck(args []string) int {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	porcelain := fs.Bool("porcelain", false, "print a bare state token (for scripts/prompts)")
 	if err := fs.Parse(args); err != nil {
-		return 2
+		return exitUsage
 	}
 	return dispatch(func(cwd string) error {
 		return cli.Check(os.Stdout, cwd, *porcelain)
@@ -94,28 +101,28 @@ func runCheck(args []string) int {
 func runHook(args []string) int {
 	if len(args) != 1 {
 		fmt.Fprintln(os.Stderr, "usage: envkeep hook <zsh|bash>")
-		return 2
+		return exitUsage
 	}
 	snippet, err := hook.Snippet(args[0])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "envkeep:", err)
-		return 1
+		return exitError
 	}
 	fmt.Print(snippet)
-	return 0
+	return exitOK
 }
 
 func dispatch(fn func(cwd string) error) int {
 	cwd, err := os.Getwd()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "envkeep:", err)
-		return 1
+		return exitError
 	}
 	if err := fn(cwd); err != nil {
 		fmt.Fprintln(os.Stderr, "envkeep:", err)
-		return 1
+		return exitError
 	}
-	return 0
+	return exitOK
 }
 
 func usage() {

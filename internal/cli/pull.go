@@ -108,5 +108,5 @@ func localPerm(path string, exists bool) os.FileMode {
 			return fi.Mode().Perm()
 		}
 	}
-	return 0o600
+	return fsutil.SecretFilePerm
 }

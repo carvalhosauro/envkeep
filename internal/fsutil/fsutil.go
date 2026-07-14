@@ -7,6 +7,11 @@ import (
 	"path/filepath"
 )
 
+// SecretFilePerm is the owner-only (0600) mode for files that hold secrets —
+// local env files, the vault, and the sync marker. Centralized so the policy
+// is defined in exactly one place.
+const SecretFilePerm os.FileMode = 0o600
+
 // WriteFileAtomic writes data to path via a temp file in the same directory
 // followed by rename, so a crash mid-write can never leave a half-written file.
 // Parent directories are created (0700); perm is applied to the final file.

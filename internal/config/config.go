@@ -18,6 +18,9 @@ const (
 	dirName  = "envkeep"
 	fileName = "config"
 
+	// keyEnvFile is the sole config key (v1): it names the tracked env file.
+	keyEnvFile = "env_file"
+
 	// DefaultEnvFile is the tracked filename when config sets none.
 	DefaultEnvFile = ".env"
 )
@@ -46,7 +49,7 @@ func Load(commonDir string) (Config, error) {
 	if err != nil {
 		return cfg, fmt.Errorf("config: parse: %w", err)
 	}
-	if v, ok := f.Get("env_file"); ok && v != "" {
+	if v, ok := f.Get(keyEnvFile); ok && v != "" {
 		cfg.EnvFile = v
 	}
 	return cfg, nil
@@ -55,6 +58,6 @@ func Load(commonDir string) (Config, error) {
 // Save writes the repo config.
 func Save(commonDir string, cfg Config) error {
 	f := envfile.New()
-	f.Set("env_file", cfg.EnvFile)
+	f.Set(keyEnvFile, cfg.EnvFile)
 	return fsutil.WriteFileAtomic(Path(commonDir), f.Render(), 0o644)
 }
