@@ -7,7 +7,13 @@ Append to the log at the end of any working session.
 ## Current phase
 
 **Phase 0 (Design & docs) — complete. Phase 1 (v1 MVP) — COMPLETE (all 6
-steps).**
+steps), v0.1.0 released. Phase 1.5 (Named environments, issue #3) — DESIGNED &
+DECIDED; implementation is the next work.**
+
+The named-environments design is settled: see
+[`designs/003-named-environments.md`](designs/003-named-environments.md) and
+decisions D23–D30 (D29 revises D6 → adopt `cobra`). Nine forks resolved with the
+maintainer over two rounds. No code written yet — awaiting the go-ahead to build.
 
 Both halves of the success criterion are met: `push`/`pull`/`status` propagate
 env across worktrees (handling per-worktree overrides and conflicts), and the
@@ -32,11 +38,20 @@ recorded in [`DECISIONS.md`](DECISIONS.md).
 
 ## Next action
 
-Phase 1 is done. Candidate follow-ups (none blocking, pick per need):
-- Real-world shakedown: use it daily across actual worktrees; watch for the
-  daemon trigger (D15 — hook proving insufficient) or any rough edges.
-- Polish backlog (small): `--prune` for push deletions (D20), interactive
-  conflict resolution, tag/version stamping for releases.
+**Implement Phase 1.5 — Named environments** (issue #3), build order in
+[`ROADMAP.md`](ROADMAP.md) / [`designs/003-named-environments.md`](designs/003-named-environments.md) §15:
+1. Core dimension (no cobra yet — flags on existing verbs): `vault/<env>/<file>`
+   + live `vault/*/` discovery; `marker.Env` + legacy tolerance; `--env`/`-c` on
+   push/pull/status; existence-validated switching; opt-in legacy migration (D27);
+   config `default_env`/`cascade`; `status --all-envs`; R3 back-compat golden.
+2. CLI restructure → `cobra`, docker-hybrid: top-level env verbs `use`/`envs`/`rm`
+   + the one `config <…>` group + completions (D29). `set` = config only.
+3. `use` cascade fan-out (D28).
+
+Other follow-ups (non-blocking, pick per need):
+- Real-world shakedown; watch for the daemon trigger (D15) or rough edges.
+- Polish backlog: `--prune` for push deletions (D20), interactive conflict
+  resolution.
 - Phase 2 (encryption) stays gated behind D14; do not start without the trigger.
 
 All 6 build steps done: mkfixture, envfile (96.1%), git (73.8%), vault (~95%),
@@ -223,3 +238,23 @@ Still open:
   `env.Equal(base)` answers exactly what a hash would, with no schema bump or
   legacy-marker migration. Verified end-to-end against a real git fixture and the
   built binary; regression tests cover pull/push/check/status + mtime-bump.
+- **2026-07-13 · Named environments designed (issue #3) — design 003, D23–D30.**
+  Worked the whole feature to a decided spec before any code:
+  `docs/designs/003-named-environments.md`. Nine forks (DP1–DP9) resolved with
+  the maintainer over three rounds. Outcomes: environment is a dimension between vault
+  and override, `vault/<env>/<file>`, `effective = env ⊕ override` (D23);
+  **independent per-env vaults** (Model A) — no shared layer, layout pre-wired so
+  a future `shared` layer is a zero-migration add (D24); **per-worktree active
+  env** via `marker.Env` (the git-worktree-HEAD analogue) with a `default_env`
+  fallback (D25); **git-branch model** — validate-to-switch, `--create`/`-c` to
+  make, env set discovered live from `vault/*/` (no `environments` config key,
+  D26); **opt-in migration** of the legacy flat vault on first env create, with
+  `Env:""` read as default (D27); env switch verb `use`, with opt-in `cascade`
+  fan-out as phase 2 (D28); **adopt `cobra` in a docker-style hybrid** — env ops
+  are top-level verbs (`use`/`envs`/`rm`, no redundant `env` prefix), only
+  `config` is a noun group, `set` reserved for `config set`; D6's trigger fired
+  (D29); single env-agnostic override kept (D30). SWAP model (one tracked file
+  whose contents swap on switch) and single-file scope confirmed; multi-file
+  stays deferred to D12. ROADMAP gains Phase 1.5 (build order: core flags →
+  cobra/hybrid restructure → `use` cascade). No implementation yet — decisions
+  recorded for review first.

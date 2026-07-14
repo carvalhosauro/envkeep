@@ -100,7 +100,11 @@ generate shell completions itself — heavy here); `urfave/cli` (lighter than
 cobra, still an unneeded dep).
 **Reconsider-trigger:** Command count grows past ~10, **or** we want the binary
 to emit its own bash/zsh completions → adopt `cobra` then.
-**Status:** ACCEPTED.
+**Status:** REVISED. *The reconsider-trigger has now fired — see D29. Named
+environments (design 003) add noun-grouped `env`/`config` subcommand trees plus
+shell completions, so `cobra` is adopted. The stdlib `flag` choice was right for
+the 5-command v1; recorded so the switch reads as a triggered decision, not a
+reversal.*
 
 ## D7 — Shell hook: `chpwd` / cd-trap by default, with mtime guard
 
@@ -384,3 +388,175 @@ diverges; old markers keep working with no migration) via the full base instead.
 shrink it, keeping full values only for the conflict path), a stored content
 hash for the cheap "did this side change?" check becomes worth its keep.
 **Status:** ACCEPTED.
+
+---
+
+## D23 — Named environments are a dimension between vault and override
+
+**Decision:** Model a named environment (`local` / `homo` / `prod` / …) as a
+first-class dimension. The vault gains a per-environment file at
+`<common-dir>/envkeep/vault/<env>/<envFilename>`. The composition rule extends to
+`effective .env = env ⊕ override` — a worktree holds one environment's values at
+a time, override still wins (D9). The local side stays a **single tracked file
+whose contents swap** when the environment changes; per-environment files do not
+coexist in the worktree. See `docs/designs/003-named-environments.md`.
+**Why:** One `.env` forces one value per key, so users duplicate keys in a single
+file for prod/homolog variants — ambiguous and unsyncable (a key maps to exactly
+one value). A per-env vault gives each key a distinct value per target with no
+duplication. The `vault/<env>/<file>` directory keeps the environment axis
+orthogonal to the deferred multi-file axis (D12): filename × environment compose
+cleanly with no migration when multi-file lands.
+**Rejected:** Duplicate keys in one flat file (the status-quo pain); a single
+annotated multi-section file (re-introduces the ambiguity and breaks flat-file
+inspectability, D2); coexisting `.env.<env>` files in the worktree
+(framework-style) — that drops the single-active-environment switch model (D25)
+and was declined by the maintainer.
+**Reconsider-trigger:** None for the dimension itself; the sharing and selection
+sub-decisions carry their own triggers (D24 / D25).
+**Status:** ACCEPTED (design 003 — pending implementation).
+
+## D24 — Sharing model: independent per-env vaults (no shared layer in v1)
+
+**Decision:** Each environment's vault is a complete, self-contained value-set
+(`vault/prod/.env` holds *every* key prod needs). There is no inherited `shared`
+base layer in this design; `effective = env ⊕ override`. The `vault/<env>/…`
+layout is chosen so a future `shared` layer (`shared ⊕ env ⊕ override`) is a
+zero-migration add.
+**Why:** Independent vaults remove the push-routing problem entirely: a flat
+local `.env` maps to one flat env vault, so `push` / `pull` / `Classify` are the
+v1 code parameterized by environment. It is the smallest change that solves the
+stated primary pain (different values per environment) and fits the
+smallest-thing ethos.
+**Rejected:** Shared-base-plus-per-env-overlay (Model B) now. It is DRY for keys
+common to every environment, but a flat local file carries no layer annotation,
+so on push envkeep cannot know whether an edited or new key belongs to `shared`
+or to the environment overlay. Resolving that needs an explicit routing rule
+(value-equality inference plus a `promote` / `--shared` verb) and a new mental
+model — complexity not justified until the pain is real.
+**Reconsider-trigger:** Re-declaring keys identical across every environment
+becomes a real maintenance burden — the "I forgot to add the common key to prod
+too" failure recurs (the same class envkeep exists to kill). Then add
+`vault/shared/<file>`, the `shared ⊕ env` composition, and the push routing rule;
+no vault move.
+**Status:** ACCEPTED (design 003 — pending implementation).
+
+## D25 — Active environment is per-worktree; selection precedence
+
+**Decision:** Each worktree's active environment lives in its sync marker
+(`marker.Env`) — the direct analogue of a git worktree's own HEAD — so worktree
+`hotfix/` can run `prod` while `feature/` runs `homo` at the same time. A
+repo-wide `default_env` (config) is the fallback for a worktree with no marker
+yet. Selection precedence for any command:
+`--env flag > marker.Env > default_env > legacy (unnamed)`.
+**Why:** Different worktrees for different targets is the natural use of the
+feature; per-worktree active env mirrors how each git worktree already checks out
+its own branch. A repo-wide-only active env would forbid concurrent per-worktree
+environments.
+**Rejected:** A single repo-wide active environment (simpler, but blocks the
+concurrent-worktree use case). The repo-wide flip stays available explicitly via
+`use` (D28), which layers on top of the per-worktree model rather than replacing
+it.
+**Reconsider-trigger:** None foreseen.
+**Status:** ACCEPTED (design 003 — pending implementation).
+
+## D26 — git-branch model for the environment set; discovered live from disk
+
+**Decision:** Environments behave like git branches. Targeting/switching to one
+(`--env prod`, `use prod`, `pull --env prod`) **validates that it exists** and
+errors otherwise (like `git checkout nonexistent`); **creating** one is explicit
+(`--create` / `-c`, e.g. `use -c prod`, analogous to `git checkout -b`). The set
+of environments is discovered live from the vault directories (`vault/*/`) — the
+filesystem is the registry, exactly as `.git/refs/heads/` is for branches — so
+there is no `environments` config list to drift. Names must be filesystem-safe
+(`[A-Za-z0-9._-]`, no `/` or `..`); `shared` / `_base` and empty are reserved.
+**Why:** Existence-validated switching kills the typo-creates-a-silent-environment
+hazard an open set would carry, while explicit `--create` keeps creation
+deliberate. Live discovery follows the "query git/fs live, no persisted index"
+ethos (D4) and removes a config↔disk drift class of bug. The git-branch mental
+model fits a git-worktree-shaped tool.
+**Rejected:** An open set (any `--env` string auto-creates — typos become silent
+environments); a declared `environments` config list (a second source of truth
+that drifts from the actual vault dirs).
+**Reconsider-trigger:** None foreseen.
+**Status:** ACCEPTED (design 003 — pending implementation).
+
+## D27 — Opt-in migration of the legacy flat vault; `Env:""` == default
+
+**Decision:** A repo that never creates an environment is untouched — the vault
+stays at `vault/<envFilename>` and output is byte-identical to pre-env envkeep.
+On the *first* environment creation, the legacy flat vault is moved once to
+`vault/<default_env>/<envFilename>` (atomic `rename`, same dir, plus a one-line
+notice). Legacy markers (no `env` field → `Env:""`) are read as the default
+environment and normalized on the next write.
+**Why:** Zero disruption for non-adopters (the back-compat guarantee), and a
+single clean code path for adopters (no permanent dual-path). The `rename` is
+atomic and reversible. Tolerating a missing `env` field mirrors how the marker
+already evolved its schema with no migration (D5 follow-up, D22).
+**Rejected:** Dual-path forever (default env keeps the legacy flat path — two code
+paths and a special-cased `status --all-envs` layout); lazy read-through
+(migrate-on-write — still two transient paths).
+**Reconsider-trigger:** None foreseen.
+**Status:** ACCEPTED (design 003 — pending implementation).
+
+## D28 — `use` switches the active environment, with opt-in cascade
+
+**Decision:** `envkeep use <env>` switches the active environment (must exist,
+D26); `use -c <env>` creates then switches. A `cascade` config flag governs
+fan-out: `cascade=false` (default) flips only the active environment (repo
+`default_env` and/or the current worktree's `marker.Env`), and other worktrees
+pick it up lazily on their next `pull`; `cascade=true` walks every worktree
+(`git.Worktrees`, as `status` does) and pulls `<env>` into each. Cascade respects
+the D20 guards — a worktree that is `ahead` / `conflict` for its current
+environment is skipped and reported, never clobbered. `--dry-run` previews. The
+cascade fan-out is the *second* implementation phase, after the core selection
+lands. (The issue #3 comment named this `set`; renamed to `use` so `set` stays
+exclusive to `config set` — D29.)
+**Why:** Covers both "flip just here" and "make the whole repo this environment
+in one command" without either being a silent default; the safe default is no
+mass write. Reusing the `status` worktree walk and the `pull` guards keeps it
+consistent with existing safety semantics.
+**Rejected:** Always fanning out (a surprising mass write); an interactive confirm
+(stdin coupling, harder to test — same reasoning as D20's `--dry-run` choice).
+**Reconsider-trigger:** None foreseen.
+**Status:** ACCEPTED (design 003 — pending implementation; phase 2 of the
+feature).
+
+## D29 — Adopt `cobra`; docker-style hybrid command surface (revises D6)
+
+**Decision:** With named environments the CLI moves to `cobra` in a **docker-style
+hybrid** shape. Environment is envkeep's *primary* domain, so its operations are
+**top-level verbs** — `use <env>` (switch; `-c` creates + switches), `envs`
+(list), `rm <env>` (delete) — the way docker exposes `ps`/`run`/`rm` at top level
+rather than `docker container …`. A dedicated `env` noun-group is rejected as
+**redundant with the tool's own name** (`envkeep env list` repeats "env"). Only
+the *secondary* domain, config, is a noun group: `envkeep config
+<get|set|list|unset>` (git-config style). The active-env switch verb is `use`;
+**`set` is reserved for `config set`** (no top-level `set`, so no overload). Full
+surface: `use`, `envs`, `rm`, `push`, `pull`, `status`, `check`, `hook`,
+`version`, `config <…>`, plus `--env`/`-c` flags and self-generated completions.
+**Why:** This is D6's written reconsider-trigger firing — the command count grows
+past the stdlib comfort zone and the tool now wants subcommand trees plus
+completions. `cobra` earns its keep at that size. The hybrid (flat primary verbs +
+one grouped secondary domain + completions) is docker's proven shape and keeps the
+common env operations short and non-redundant.
+**Rejected:** A `env` noun-group for environment ops (redundant with the binary
+name); a top-level `set` for env switch (overloads `config set`); staying on
+stdlib `flag` (grouped subcommands + completions get painful to hand-roll);
+`urfave/cli` (cobra's completion + subcommand-tree support is the reason to
+switch).
+**Reconsider-trigger:** None (this *is* the D6 trigger resolved).
+**Status:** ACCEPTED (design 003 — pending implementation). Revises D6.
+
+## D30 — Override stays single and environment-agnostic
+
+**Decision:** The per-worktree override (`.env.override`, D9) remains a single
+file applied identically under every environment. Its keys are machine-local
+(e.g. `PORT`) and do not vary by deployment target.
+**Why:** Machine-local values are about the worktree/machine, not about
+prod-vs-homo, so one override serves every environment. Keeps the composition
+rule (`env ⊕ override`) simple and symmetric with D9.
+**Rejected:** Per-environment override files (`.env.override.<env>`) — more files
+and a three-way composition for a need that does not exist yet.
+**Reconsider-trigger:** A real machine-local value must differ by environment;
+then add `.env.override.<env>` layered over the single override.
+**Status:** ACCEPTED (design 003 — pending implementation).
