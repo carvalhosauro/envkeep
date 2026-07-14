@@ -61,7 +61,7 @@ func TestLoadStatReadsMtimesSkippingBase(t *testing.T) {
 	if err := Save(dir, m); err != nil {
 		t.Fatal(err)
 	}
-	lm, vm, ok, err := LoadStat(dir)
+	_, lm, vm, ok, err := LoadStat(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestLoadStatReadsMtimesSkippingBase(t *testing.T) {
 }
 
 func TestLoadStatMissingIsNotError(t *testing.T) {
-	_, _, ok, err := LoadStat(t.TempDir())
+	_, _, _, ok, err := LoadStat(t.TempDir())
 	if err != nil {
 		t.Fatalf("LoadStat of missing marker: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestLoadStatMalformedErrors(t *testing.T) {
 	if err := os.WriteFile(Path(dir), []byte("{not valid json"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := LoadStat(dir); err == nil {
+	if _, _, _, _, err := LoadStat(dir); err == nil {
 		t.Error("LoadStat of malformed marker: want error, got nil")
 	}
 }

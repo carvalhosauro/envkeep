@@ -24,11 +24,19 @@ const fileName = "envkeep.base"
 
 // Marker is a worktree's record of its last sync.
 type Marker struct {
+	// Env is the environment the worktree's local file currently holds — its
+	// active environment, the analog of a git worktree's HEAD (D25). Empty
+	// means the legacy unnamed environment; a marker written before named
+	// environments existed omits the field and decodes to "" (D27, no
+	// migration).
+	Env string `json:"env,omitempty"`
 	// Base is the shared vault content the worktree last synced to — the common
-	// ancestor for the 3-way comparison.
+	// ancestor for the 3-way comparison. It is the content of Env's vault at the
+	// last sync.
 	Base envfile.Env `json:"base"`
 	// LocalMTime and VaultMTime are the file mtimes (unix nanoseconds) observed
 	// at the last check, used to skip re-parsing when nothing has changed.
+	// VaultMTime is the mtime of Env's vault.
 	LocalMTime int64 `json:"local_mtime"`
 	VaultMTime int64 `json:"vault_mtime"`
 }
@@ -55,32 +63,35 @@ func Load(gitDir string) (Marker, bool, error) {
 	return m, true, nil
 }
 
-// markerStat is a projection of Marker holding only the cached mtimes. Decoding
-// into it makes encoding/json skip the (potentially large) base object without
-// allocating the map or its strings.
+// markerStat is a projection of Marker holding the active environment and the
+// cached mtimes. Decoding into it makes encoding/json skip the (potentially
+// large) base object without allocating the map or its strings.
 type markerStat struct {
-	LocalMTime int64 `json:"local_mtime"`
-	VaultMTime int64 `json:"vault_mtime"`
+	Env        string `json:"env,omitempty"`
+	LocalMTime int64  `json:"local_mtime"`
+	VaultMTime int64  `json:"vault_mtime"`
 }
 
-// LoadStat reads only the cached mtimes from a worktree's marker, skipping the
-// base snapshot — the cheap read for the mtime fast path (D5/D7), where the base
-// is never consulted. ok is false (with a nil error) when no marker exists yet.
-// Callers that need the base (an mtime miss → 3-way compare) must fall back to
-// Load.
-func LoadStat(gitDir string) (localMTime, vaultMTime int64, ok bool, err error) {
+// LoadStat reads the active environment and cached mtimes from a worktree's
+// marker, skipping the base snapshot — the cheap read for the mtime fast path
+// (D5/D7), where the base is never consulted. The env lets a caller detect a
+// re-point (the worktree's active env differs from the one being targeted)
+// without loading the base. ok is false (with a nil error) when no marker
+// exists yet. Callers that need the base (an mtime miss → 3-way compare) must
+// fall back to Load.
+func LoadStat(gitDir string) (env string, localMTime, vaultMTime int64, ok bool, err error) {
 	data, err := os.ReadFile(Path(gitDir))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return 0, 0, false, nil
+			return "", 0, 0, false, nil
 		}
-		return 0, 0, false, fmt.Errorf("state: read: %w", err)
+		return "", 0, 0, false, fmt.Errorf("state: read: %w", err)
 	}
 	var s markerStat
 	if err := json.Unmarshal(data, &s); err != nil {
-		return 0, 0, false, fmt.Errorf("state: %s: %w", Path(gitDir), err)
+		return "", 0, 0, false, fmt.Errorf("state: %s: %w", Path(gitDir), err)
 	}
-	return s.LocalMTime, s.VaultMTime, true, nil
+	return s.Env, s.LocalMTime, s.VaultMTime, true, nil
 }
 
 // Save atomically writes the marker for a worktree gitdir.

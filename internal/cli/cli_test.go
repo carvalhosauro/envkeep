@@ -46,7 +46,7 @@ func writeFile(t *testing.T, path, content string) {
 func mustPush(t *testing.T, cwd string) string {
 	t.Helper()
 	var b bytes.Buffer
-	if err := Push(&b, cwd, "", false); err != nil {
+	if err := Push(&b, cwd, "", "", false, false); err != nil {
 		t.Fatalf("Push(%s): %v\n%s", cwd, err, b.String())
 	}
 	return b.String()
@@ -55,7 +55,7 @@ func mustPush(t *testing.T, cwd string) string {
 func mustPull(t *testing.T, cwd string) string {
 	t.Helper()
 	var b bytes.Buffer
-	if err := Pull(&b, cwd, "", false); err != nil {
+	if err := Pull(&b, cwd, "", "", false, false); err != nil {
 		t.Fatalf("Pull(%s): %v\n%s", cwd, err, b.String())
 	}
 	return b.String()
@@ -73,7 +73,7 @@ func TestPushThenStatusClean(t *testing.T) {
 	mustPush(t, f["WT_A"])
 
 	var b bytes.Buffer
-	if err := Status(&b, f["WT_A"], ""); err != nil {
+	if err := Status(&b, f["WT_A"], "", ""); err != nil {
 		t.Fatal(err)
 	}
 	out := b.String()
@@ -145,7 +145,7 @@ func TestPushConflictRefused(t *testing.T) {
 
 	writeFile(t, filepath.Join(f["WT_B"], ".env"), "KEY=v3\n")
 	var b bytes.Buffer
-	err := Push(&b, f["WT_B"], "", false)
+	err := Push(&b, f["WT_B"], "", "", false, false)
 	if err == nil {
 		t.Fatalf("expected conflict error, got success:\n%s", b.String())
 	}
@@ -161,7 +161,7 @@ func TestPullRefusesWhenLocalAhead(t *testing.T) {
 
 	// Local edited after sync, vault unchanged -> ahead -> pull must refuse.
 	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=v2\n")
-	err := Pull(&bytes.Buffer{}, f["WT_A"], "", false)
+	err := Pull(&bytes.Buffer{}, f["WT_A"], "", "", false, false)
 	if err == nil || !strings.Contains(err.Error(), "push") {
 		t.Errorf("Pull error = %v, want a refusal telling to push first", err)
 	}

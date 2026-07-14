@@ -2,6 +2,7 @@ package cli
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 
@@ -10,22 +11,34 @@ import (
 	"github.com/carvalhosauro/envkeep/internal/state"
 )
 
-// Pull writes the shared vault into the current worktree's local env, composed
-// with the per-worktree override (override wins, D9), preserving the local
-// file's key order and comments (D11). It refuses when the local env holds
-// changes not yet pushed (D5).
-func Pull(w io.Writer, cwd, envFileFlag string, dryRun bool) error {
-	ctx, err := Resolve(cwd, envFileFlag)
+// Pull writes the active environment's vault into the current worktree's local
+// env, composed with the per-worktree override (override wins, D9), preserving
+// the local file's key order and comments (D11). The environment is resolved by
+// --env > marker > default_env (D25); targeting a non-existent env needs
+// --create (D26). It refuses when the local env holds changes not yet pushed
+// (D5), and — when switching to a different env (a re-point) — refuses to
+// discard unpushed edits in the worktree's current env (E4).
+func Pull(w io.Writer, cwd, envFileFlag, envFlag string, create, dryRun bool) error {
+	ctx, err := Resolve(cwd, envFileFlag, envFlag)
 	if err != nil {
 		return err
 	}
 	p := &printer{w: w}
 
-	vaultEnv, vaultExists, err := readVault(ctx)
+	marker, hasMarker, err := state.Load(ctx.GitDir)
 	if err != nil {
 		return err
 	}
-	if !vaultExists {
+	activeEnv := ctx.resolveEnv(marker.Env)
+	if err := ensureTargetEnv(ctx, activeEnv, create, dryRun); err != nil {
+		return err
+	}
+
+	vaultEnv, vaultExists, err := readVaultFor(ctx, activeEnv)
+	if err != nil {
+		return err
+	}
+	if !vaultExists && !create {
 		return errors.New("no vault yet; run 'envkeep push' first")
 	}
 	overrideEnv, err := readEnvOrEmpty(ctx.OverridePath)
@@ -42,17 +55,15 @@ func Pull(w io.Writer, cwd, envFileFlag string, dryRun bool) error {
 	localEnv := localFile.Map()
 	localShared := localEnv.Without(overrideEnv)
 
-	marker, hasMarker, err := state.Load(ctx.GitDir)
-	if err != nil {
-		return err
-	}
-	if hasMarker {
+	sameEnv := hasMarker && marker.Env == activeEnv
+	switch {
+	case sameEnv:
 		switch st, conflicts := envfile.Classify(marker.Base, localShared, vaultEnv); st {
 		case envfile.Clean:
 			// Content agrees with the vault. Retire a stale base so status/check
 			// stop reporting a false diverged and the mtime fast path is restored.
 			if !marker.Base.Equal(vaultEnv) {
-				if err := saveMarker(ctx, vaultEnv); err != nil {
+				if err := saveMarker(ctx, activeEnv, vaultEnv); err != nil {
 					return err
 				}
 			}
@@ -68,15 +79,25 @@ func Pull(w io.Writer, cwd, envFileFlag string, dryRun bool) error {
 			return errors.New("conflict: vault and local changed the same key(s); resolve, then pull")
 		}
 		// Behind or Diverged: safe to apply.
+	case hasMarker:
+		// Re-point to a different environment (marker.Env != activeEnv). Guard the
+		// current env's unpushed local edits (E4) — never discard them silently.
+		if !marker.Base.Equal(localShared) {
+			return fmt.Errorf("local has changes not pushed to environment %q; push or discard before switching to %q", marker.Env, activeEnv)
+		}
+		// Local matches the current env's base → safe to re-point.
 	}
 
 	target := vaultEnv.Union(overrideEnv) // effective local = vault ⊕ override
 	d := localEnv.Diff(target)
 	if d.Empty() {
-		// Byte-identical yet never synced: no marker means status/check keep
-		// reporting unsynced. Establish the marker so it settles to clean (#17).
-		if !hasMarker {
-			if err := saveMarker(ctx, vaultEnv); err != nil {
+		// Nothing to write, but refresh the marker when it is missing
+		// (byte-identical yet never synced — #17), stale, or points at a
+		// different env (a re-point), so status/check settle to clean and record
+		// the active env. Guard on vaultExists so a just-created empty env with
+		// no vault yet does not get a marker with nothing behind it.
+		if vaultExists && (!sameEnv || !marker.Base.Equal(vaultEnv)) {
+			if err := saveMarker(ctx, activeEnv, vaultEnv); err != nil {
 				return err
 			}
 		}
@@ -100,10 +121,10 @@ func Pull(w io.Writer, cwd, envFileFlag string, dryRun bool) error {
 	if err := fsutil.WriteFileAtomic(ctx.LocalPath, localFile.Render(), localPerm(ctx.LocalPath, localExists)); err != nil {
 		return err
 	}
-	if err := saveMarker(ctx, vaultEnv); err != nil {
+	if err := saveMarker(ctx, activeEnv, vaultEnv); err != nil {
 		return err
 	}
-	p.printf("pulled %s -> %s\n", ctx.VaultPath, ctx.EnvFile)
+	p.printf("pulled %s -> %s\n", ctx.vaultPath(activeEnv), ctx.EnvFile)
 	return p.err
 }
 

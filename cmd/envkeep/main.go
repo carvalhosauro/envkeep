@@ -55,35 +55,42 @@ func run(args []string) int {
 func runStatus(args []string) int {
 	fs := flag.NewFlagSet("status", flag.ContinueOnError)
 	file := fs.String("file", "", "tracked env filename (overrides repo config)")
+	env := fs.String("env", "", "environment to compare against (default: each worktree's active env)")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
 	return dispatch(func(cwd string) error {
-		return cli.Status(os.Stdout, cwd, *file)
+		return cli.Status(os.Stdout, cwd, *file, *env)
 	})
 }
 
 func runPush(args []string) int {
 	fs := flag.NewFlagSet("push", flag.ContinueOnError)
 	file := fs.String("file", "", "tracked env filename (overrides repo config)")
+	env := fs.String("env", "", "target environment (default: this worktree's active env)")
+	create := fs.Bool("create", false, "create the environment if it does not exist")
+	fs.BoolVar(create, "c", false, "shorthand for --create")
 	dry := fs.Bool("dry-run", false, "show what would change without writing")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
 	return dispatch(func(cwd string) error {
-		return cli.Push(os.Stdout, cwd, *file, *dry)
+		return cli.Push(os.Stdout, cwd, *file, *env, *create, *dry)
 	})
 }
 
 func runPull(args []string) int {
 	fs := flag.NewFlagSet("pull", flag.ContinueOnError)
 	file := fs.String("file", "", "tracked env filename (overrides repo config)")
+	env := fs.String("env", "", "environment to pull (default: this worktree's active env)")
+	create := fs.Bool("create", false, "create the environment if it does not exist")
+	fs.BoolVar(create, "c", false, "shorthand for --create")
 	dry := fs.Bool("dry-run", false, "show what would change without writing")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
 	return dispatch(func(cwd string) error {
-		return cli.Pull(os.Stdout, cwd, *file, *dry)
+		return cli.Pull(os.Stdout, cwd, *file, *env, *create, *dry)
 	})
 }
 
@@ -129,15 +136,25 @@ func usage() {
 	fmt.Fprint(os.Stderr, `envkeep — keep .env in sync across git worktrees
 
 usage:
-  envkeep status            show each worktree's sync state vs the vault
-  envkeep push [--dry-run]  merge this worktree's .env into the vault
-  envkeep pull [--dry-run]  write the vault into this worktree's .env
-  envkeep check             quiet drift check for the current worktree (for hooks)
-  envkeep hook <zsh|bash>   print shell integration to source in your rc file
+  envkeep status [--env E]         show each worktree's active env and sync state
+  envkeep push [--env E] [-c]      merge this worktree's .env into the env's vault
+  envkeep pull [--env E] [-c]      write the env's vault into this worktree's .env
+  envkeep check                    quiet drift check for the current worktree (for hooks)
+  envkeep hook <zsh|bash>          print shell integration to source in your rc file
   envkeep version
 
 flags:
   --file NAME   tracked env filename (overrides repo config; default .env)
+  --env NAME    environment to target; unset uses the worktree's active env,
+                else the repo default_env, else the unnamed (legacy) vault
+  -c, --create  create the environment (push/pull) if it does not exist
+  --dry-run     show what would change without writing (push/pull)
+
+environments:
+  A key can hold different values per environment (e.g. local / homo / prod).
+  Environments work like git branches: 'envkeep pull --env prod' switches only
+  to one that exists; add '--create' (-c) to make a new one. Each worktree keeps
+  its own active environment.
 
 shell integration:
   eval "$(envkeep hook zsh)"   # or: bash — warns on drift when you cd into a worktree

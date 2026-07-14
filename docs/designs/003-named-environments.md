@@ -335,10 +335,11 @@ is given (DP3/E1); an unknown env without `--create` errors.
   (switching env), it is **not** a conflict — it's a full re-point: rewrite local
   to `E`, save marker `Env=E`. Guards still protect *unpushed* work in the
   current env (Ahead/Conflict vs `marker.Env`'s vault) — see edge E4.
-- **`status [--env E] [--all-envs]`** — default: one line per worktree showing
-  its **active env** + state vs that env's vault. `--all-envs`: worktree × env
-  matrix. Vault header lists per-env vault existence. Absent env vault →
-  `absent (env E not pushed)`.
+- **`status [--env E]`** — default: one line per worktree showing its **active
+  env** + state vs that env's vault; `--env E` forces the comparison env for
+  every worktree. The header lists the existing environments (+ default). Absent
+  env vault → `absent`. (`--all-envs`, the full worktree × env matrix, is phase 2
+  — a true matrix needs a per-env base the marker does not store today.)
 - **`check`** — quiet per-worktree drift for the hook. Uses `marker.Env` (the
   active env) to pick the vault; mtime fast path unchanged (stats the active
   env's vault). Shell snippet (`internal/hook`) needs **no change**: it only
@@ -526,12 +527,16 @@ All forks resolved. Ready to materialize DECISIONS + ROADMAP and implement (§15
    `marker.Env` + legacy (`Env:""`) tolerance; `--env` (+ `--create`/`-c`) on
    push/pull/status; env-existence validation (git-branch model); selection
    precedence; `check` uses `marker.Env`; opt-in migration (§9a); config
-   `default_env`/`cascade` parse; `status --all-envs`; fixtures + goldens + R3
-   back-compat golden.
+   `default_env`/`cascade` parse; `status` shows each worktree's active env +
+   state (with `--env` to force a comparison env); fixtures + goldens + R3
+   back-compat golden. ✅ **DONE (2026-07-14):** all layers, lint clean,
+   coverage tiers pass (total 84.1%), driven end-to-end against the real binary.
 2. **CLI restructure → cobra, docker-hybrid (D29):** top-level env verbs (`use`,
    `envs`, `rm`) + the one `envkeep config <get|set|list|unset>` group + shell
-   completions. (Can precede or follow step 1's flags, but must land before the
-   surface grows further.)
+   completions. Also `status --all-envs` — the full worktree × environment
+   matrix, deferred from step 1 because a true matrix needs a per-env base the
+   marker does not store today. (Can precede or follow step 1's flags, but must
+   land before the surface grows further.)
 3. **`use` cascade fan-out** (§10) with `--dry-run` and skip-not-clobber (phase 2,
    D28).
 4. **(trigger-gated) `shared` layer (Model B):** compose `shared ⊕ env`; push

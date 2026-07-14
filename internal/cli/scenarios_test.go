@@ -19,7 +19,7 @@ func TestPushDryRunDoesNotWriteVault(t *testing.T) {
 	f := fixture(t)
 	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=value\n")
 
-	out, err := run(t, func(b *bytes.Buffer) error { return Push(b, f["WT_A"], "", true) })
+	out, err := run(t, func(b *bytes.Buffer) error { return Push(b, f["WT_A"], "", "", false, true) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestPushRefusesWhenBehind(t *testing.T) {
 	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=v2\n")
 	mustPush(t, f["WT_A"]) // vault -> v2; wt-b now behind
 
-	err := Push(&bytes.Buffer{}, f["WT_B"], "", false)
+	err := Push(&bytes.Buffer{}, f["WT_B"], "", "", false, false)
 	if err == nil || !strings.Contains(err.Error(), "pull") {
 		t.Errorf("push when behind = %v, want refusal mentioning pull", err)
 	}
@@ -59,7 +59,7 @@ func TestPushRefusesWhenBehind(t *testing.T) {
 
 func TestPushNoLocalEnv(t *testing.T) {
 	f := fixture(t)
-	err := Push(&bytes.Buffer{}, f["WT_A"], "", false)
+	err := Push(&bytes.Buffer{}, f["WT_A"], "", "", false, false)
 	if err == nil || !strings.Contains(err.Error(), "no .env") {
 		t.Errorf("push without .env = %v, want 'no .env' error", err)
 	}
@@ -70,7 +70,7 @@ func TestPullDryRunDoesNotWriteLocal(t *testing.T) {
 	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=value\n")
 	mustPush(t, f["WT_A"])
 
-	out, err := run(t, func(b *bytes.Buffer) error { return Pull(b, f["WT_B"], "", true) })
+	out, err := run(t, func(b *bytes.Buffer) error { return Pull(b, f["WT_B"], "", "", false, true) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestPullDryRunDoesNotWriteLocal(t *testing.T) {
 
 func TestPullNoVault(t *testing.T) {
 	f := fixture(t)
-	err := Pull(&bytes.Buffer{}, f["WT_A"], "", false)
+	err := Pull(&bytes.Buffer{}, f["WT_A"], "", "", false, false)
 	if err == nil || !strings.Contains(err.Error(), "push") {
 		t.Errorf("pull with no vault = %v, want refusal mentioning push", err)
 	}
@@ -111,7 +111,7 @@ func TestStatusNoVault(t *testing.T) {
 	f := fixture(t)
 	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=value\n")
 
-	out, err := run(t, func(b *bytes.Buffer) error { return Status(b, f["WT_A"], "") })
+	out, err := run(t, func(b *bytes.Buffer) error { return Status(b, f["WT_A"], "", "") })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestStatusUnsynced(t *testing.T) {
 
 	// wt-b has a local .env but never synced.
 	writeFile(t, filepath.Join(f["WT_B"], ".env"), "KEY=v1\n")
-	out, err := run(t, func(b *bytes.Buffer) error { return Status(b, f["WT_B"], "") })
+	out, err := run(t, func(b *bytes.Buffer) error { return Status(b, f["WT_B"], "", "") })
 	if err != nil {
 		t.Fatal(err)
 	}

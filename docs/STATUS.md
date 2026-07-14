@@ -7,13 +7,18 @@ Append to the log at the end of any working session.
 ## Current phase
 
 **Phase 0 (Design & docs) — complete. Phase 1 (v1 MVP) — COMPLETE (all 6
-steps), v0.1.0 released. Phase 1.5 (Named environments, issue #3) — DESIGNED &
-DECIDED; implementation is the next work.**
+steps), v0.1.0 released. Phase 1.5 (Named environments, issue #3) — STEP 1
+(core, flags-only) DONE on branch `feat/named-environments`; next is step 2
+(CLI restructure to cobra, docker-hybrid).**
 
 The named-environments design is settled: see
 [`designs/003-named-environments.md`](designs/003-named-environments.md) and
 decisions D23–D30 (D29 revises D6 → adopt `cobra`). Nine forks resolved with the
-maintainer over two rounds. No code written yet — awaiting the go-ahead to build.
+maintainer over three rounds. Step 1 is implemented and verified: per-env vaults
+(`vault/<env>/<file>`), per-worktree active env (`marker.Env`), git-branch model
+(`--env` + `--create`/`-c`), opt-in legacy migration, `default_env`/`cascade`
+config, env-aware push/pull/status/check. Lint clean, coverage tiers pass (total
+84.1%), driven end-to-end against the real binary.
 
 Both halves of the success criterion are met: `push`/`pull`/`status` propagate
 env across worktrees (handling per-worktree overrides and conflicts), and the
@@ -38,14 +43,14 @@ recorded in [`DECISIONS.md`](DECISIONS.md).
 
 ## Next action
 
-**Implement Phase 1.5 — Named environments** (issue #3), build order in
+**Continue Phase 1.5 — Named environments** (issue #3), build order in
 [`ROADMAP.md`](ROADMAP.md) / [`designs/003-named-environments.md`](designs/003-named-environments.md) §15:
-1. Core dimension (no cobra yet — flags on existing verbs): `vault/<env>/<file>`
-   + live `vault/*/` discovery; `marker.Env` + legacy tolerance; `--env`/`-c` on
-   push/pull/status; existence-validated switching; opt-in legacy migration (D27);
-   config `default_env`/`cascade`; `status --all-envs`; R3 back-compat golden.
-2. CLI restructure → `cobra`, docker-hybrid: top-level env verbs `use`/`envs`/`rm`
-   + the one `config <…>` group + completions (D29). `set` = config only.
+1. ~~Core dimension (flags on existing verbs)~~ ✅ **DONE** — env-aware
+   push/pull/status/check, git-branch `--env`/`-c`, migration, per-env vaults,
+   `marker.Env`, config keys, new unit + integration tests.
+2. **NEXT — CLI restructure → `cobra`, docker-hybrid:** top-level env verbs
+   `use`/`envs`/`rm` + the one `config <…>` group + completions (D29). `set` =
+   config only. Also `status --all-envs` matrix (deferred from step 1).
 3. `use` cascade fan-out (D28).
 
 Other follow-ups (non-blocking, pick per need):
@@ -258,3 +263,21 @@ Still open:
   stays deferred to D12. ROADMAP gains Phase 1.5 (build order: core flags →
   cobra/hybrid restructure → `use` cascade). No implementation yet — decisions
   recorded for review first.
+- **2026-07-14 · Phase 1.5 step 1 (core, flags-only) implemented.** On branch
+  `feat/named-environments` (worktree). `vault`: `PathForEnv` (`vault/<env>/<file>`,
+  legacy `""` → flat path), live `Environments` discovery from `vault/*/`,
+  `EnvExists`, `ValidEnvName`. `config`: `default_env` + `cascade` keys (Save
+  omits them when unset → R3-preserving bare config). `state`: `Marker.Env`
+  (omitempty; legacy markers decode to ""), `LoadStat` returns the env. `cli`:
+  Context resolves env by `--env > marker.Env > default_env > ""` (D25);
+  push/pull/status/check env-aware; git-branch existence gate with `--create`/`-c`
+  (D26); opt-in legacy→env migration on first create with `default_env` set (D27);
+  pull re-point switches env and guards unpushed edits in the current env (E4);
+  `status` shows a per-worktree active-env column + environments header. New
+  unit tests (vault/config/state) + integration tests (per-env values, unknown
+  env refused, re-point, E4 guard, migration, R3 legacy-unchanged). Existing
+  suite green with the new signatures. Lint clean; coverage tiers pass (vault
+  95.6 / config 91.7 / state 87.0 / cli 79.2; total 84.1%). Verified end-to-end
+  by driving the built binary through the full lifecycle. `status --all-envs`
+  matrix deferred to step 2 (needs a per-env base the marker does not store).
+  Cobra restructure (step 2) is next.

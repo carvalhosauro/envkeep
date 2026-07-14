@@ -7,15 +7,16 @@ import (
 
 	"github.com/carvalhosauro/envkeep/internal/envfile"
 	"github.com/carvalhosauro/envkeep/internal/state"
-	"github.com/carvalhosauro/envkeep/internal/vault"
 )
 
 // Push merges the current worktree's local env (minus override keys) into the
-// shared vault. It is a union merge — local wins on shared keys, vault-only keys
-// are kept — so a worktree can never delete a key another worktree added (D8).
-// It refuses when the vault holds changes the local env would clobber (D5).
-func Push(w io.Writer, cwd, envFileFlag string, dryRun bool) error {
-	ctx, err := Resolve(cwd, envFileFlag)
+// active environment's vault. It is a union merge — local wins on shared keys,
+// vault-only keys are kept — so a worktree can never delete a key another
+// worktree added (D8). The environment is resolved by --env > marker >
+// default_env (D25); targeting a non-existent env needs --create (D26). It
+// refuses when the vault holds changes the local env would clobber (D5).
+func Push(w io.Writer, cwd, envFileFlag, envFlag string, create, dryRun bool) error {
+	ctx, err := Resolve(cwd, envFileFlag, envFlag)
 	if err != nil {
 		return err
 	}
@@ -34,22 +35,30 @@ func Push(w io.Writer, cwd, envFileFlag string, dryRun bool) error {
 	}
 	localShared := localEnv.Without(overrideEnv)
 
-	vaultEnv, vaultExists, err := readVault(ctx)
-	if err != nil {
-		return err
-	}
 	marker, hasMarker, err := state.Load(ctx.GitDir)
 	if err != nil {
 		return err
 	}
+	activeEnv := ctx.resolveEnv(marker.Env)
+	if err := ensureTargetEnv(ctx, activeEnv, create, dryRun); err != nil {
+		return err
+	}
 
-	if vaultExists && hasMarker {
+	vaultEnv, vaultExists, err := readVaultFor(ctx, activeEnv)
+	if err != nil {
+		return err
+	}
+
+	// The 3-way base guard only applies when the marker's base belongs to the
+	// env being pushed (marker.Env == activeEnv). A cross-env or first-time push
+	// has no valid base here, so it falls back to a plain union — which is safe
+	// by D8 (union never deletes a key another worktree added).
+	sameEnv := hasMarker && marker.Env == activeEnv
+	if vaultExists && sameEnv {
 		switch st, conflicts := envfile.Classify(marker.Base, localShared, vaultEnv); st {
 		case envfile.Clean:
-			// Content agrees with the vault. Retire a stale base so status/check
-			// stop reporting a false diverged and the mtime fast path is restored.
 			if !marker.Base.Equal(vaultEnv) {
-				if err := saveMarker(ctx, vaultEnv); err != nil {
+				if err := saveMarker(ctx, activeEnv, vaultEnv); err != nil {
 					return err
 				}
 			}
@@ -70,10 +79,13 @@ func Push(w io.Writer, cwd, envFileFlag string, dryRun bool) error {
 	newVault := vaultEnv.Union(localShared)
 	d := vaultEnv.Diff(newVault)
 	if d.Empty() {
-		// Byte-identical yet never synced: no marker means status/check keep
-		// reporting unsynced. Establish the marker so it settles to clean (#17).
-		if vaultExists && !hasMarker {
-			if err := saveMarker(ctx, newVault); err != nil {
+		// Vault already holds every local key. Refresh the marker when it is
+		// missing (byte-identical yet never synced — #17), stale, or points at a
+		// different env, so status/check settle to clean and the fast path is
+		// right. Guard on vaultExists so we never write a marker with no vault
+		// behind it (#17).
+		if vaultExists && (!sameEnv || !marker.Base.Equal(vaultEnv)) {
+			if err := saveMarker(ctx, activeEnv, vaultEnv); err != nil {
 				return err
 			}
 		}
@@ -85,25 +97,12 @@ func Push(w io.Writer, cwd, envFileFlag string, dryRun bool) error {
 		p.printf("(dry run — vault not written)\n")
 		return p.err
 	}
-	if err := ctx.Vault.Write(newVault); err != nil {
+	if err := ctx.vaultStore(activeEnv).Write(newVault); err != nil {
 		return err
 	}
-	if err := saveMarker(ctx, newVault); err != nil {
+	if err := saveMarker(ctx, activeEnv, newVault); err != nil {
 		return err
 	}
-	p.printf("pushed %s -> %s\n", ctx.EnvFile, ctx.VaultPath)
+	p.printf("pushed %s -> %s\n", ctx.EnvFile, ctx.vaultPath(activeEnv))
 	return p.err
-}
-
-// readVault reads the vault, mapping the fresh (not-yet-created) state to an
-// empty set with exists=false.
-func readVault(ctx *Context) (envfile.Env, bool, error) {
-	env, err := ctx.Vault.Read()
-	if errors.Is(err, vault.ErrNotFound) {
-		return envfile.Env{}, false, nil
-	}
-	if err != nil {
-		return nil, false, err
-	}
-	return env, true, nil
 }

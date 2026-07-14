@@ -39,7 +39,7 @@ const stateUnsynced = "unsynced"
 // strings) when there is nothing to say: in sync, nothing to compare, or any
 // error — check must never be noisy or fail the prompt.
 func assess(cwd string) (stateStr, envFile string, report bool) {
-	ctx, err := Resolve(cwd, "")
+	ctx, err := Resolve(cwd, "", "") // the hook passes no flags
 	if err != nil {
 		return "", "", false
 	}
@@ -47,33 +47,40 @@ func assess(cwd string) (stateStr, envFile string, report bool) {
 	if !localExists {
 		return "", "", false
 	}
-	vaultMTime, vaultExists := mtimeNanos(ctx.VaultPath)
-	if !vaultExists {
+
+	// Read the marker's active env (and cached mtimes) cheaply; the active env
+	// selects which vault to compare against (D25). No marker env / legacy →
+	// resolveEnv falls back to default_env or the unnamed vault.
+	markerEnv, markerLocal, markerVault, hasMarker, err := state.LoadStat(ctx.GitDir)
+	if err != nil {
 		return "", "", false
 	}
-	markerLocal, markerVault, hasMarker, err := state.LoadStat(ctx.GitDir)
-	if err != nil {
+	activeEnv := ctx.resolveEnv(markerEnv)
+
+	vaultMTime, vaultExists := mtimeNanos(ctx.vaultPath(activeEnv))
+	if !vaultExists {
 		return "", "", false
 	}
 	if !hasMarker {
 		return stateUnsynced, ctx.EnvFile, true
 	}
 
-	// mtime fast path: nothing moved since the last sync → definitely clean.
-	// Reads only the marker's cached mtimes (state.LoadStat) — never the base
-	// snapshot, nor the vault (#6) — so the prompt hook this backs stays cheap
-	// on every render regardless of env size (D7, #8).
-	if localMTime == markerLocal && vaultMTime == markerVault {
+	// mtime fast path: same active env AND neither file moved since the last
+	// sync → definitely clean. Reads only the marker's cached env + mtimes
+	// (state.LoadStat) — never the base snapshot, nor the vault (#6) — so the
+	// prompt hook this backs stays cheap on every render (D7, #8). A differing
+	// env means a re-point is pending, so it falls through to the slow path.
+	if markerEnv == activeEnv && localMTime == markerLocal && vaultMTime == markerVault {
 		return "", "", false
 	}
 
-	// mtime miss: load the full marker (its base drives the 3-way compare) and
-	// read the actual content.
+	// mtime miss (or re-point): load the full marker (its base drives the 3-way
+	// compare) and read the actual content of the active env.
 	marker, ok, err := state.Load(ctx.GitDir)
 	if err != nil || !ok {
 		return "", "", false
 	}
-	vaultEnv, vaultOK, err := readVault(ctx)
+	vaultEnv, vaultOK, err := readVaultFor(ctx, activeEnv)
 	if err != nil || !vaultOK {
 		return "", "", false
 	}
@@ -88,10 +95,11 @@ func assess(cwd string) (stateStr, envFile string, report bool) {
 	st, _ := envfile.Classify(marker.Base, localEnv.Without(overrideEnv), vaultEnv)
 	if st == envfile.Clean {
 		// The mtime moved but the content is clean (unchanged, or reconverged
-		// with the vault from a stale base). Refresh the marker to retire a stale
-		// base and restore the mtime fast path. Ignore write errors — check must
-		// never fail or break the prompt.
-		_ = saveMarker(ctx, vaultEnv)
+		// with the active env from a stale base — including the first check after
+		// a legacy→env migration, where marker.Env is "" but content agrees).
+		// Refresh the marker to retire the stale base / stale env and restore the
+		// mtime fast path. Ignore write errors — check must never break the prompt.
+		_ = saveMarker(ctx, activeEnv, vaultEnv)
 		return "", "", false
 	}
 	return st.String(), ctx.EnvFile, true

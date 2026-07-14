@@ -27,10 +27,11 @@ func printConflicts(p *printer, cs []envfile.KeyConflict) {
 	}
 }
 
-// saveMarker records the current sync point for the worktree: base is the shared
-// content just synced to, mtimes are the files' current mtimes.
-func saveMarker(ctx *Context, base envfile.Env) error {
+// saveMarker records the current sync point for the worktree: env is the active
+// environment the local file now holds, base is env's vault content just synced
+// to, mtimes are the files' current mtimes (the vault mtime is env's vault).
+func saveMarker(ctx *Context, env string, base envfile.Env) error {
 	lm, _ := mtimeNanos(ctx.LocalPath)
-	vm, _ := mtimeNanos(ctx.VaultPath)
-	return state.Save(ctx.GitDir, state.Marker{Base: base, LocalMTime: lm, VaultMTime: vm})
+	vm, _ := mtimeNanos(ctx.vaultPath(env))
+	return state.Save(ctx.GitDir, state.Marker{Env: env, Base: base, LocalMTime: lm, VaultMTime: vm})
 }

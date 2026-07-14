@@ -59,12 +59,16 @@ resolved decisions in [`designs/003-named-environments.md`](designs/003-named-en
    tolerance; `--env` (+ `--create`/`-c`) on `push`/`pull`/`status`;
    existence-validated switching; selection precedence; `check` reads `marker.Env`;
    opt-in migration of the legacy flat vault (D27); config `default_env` /
-   `cascade`; `status --all-envs`. Fixtures + goldens + the R3 byte-identical
-   legacy back-compat golden. (D23–D27, D30)
+   `cascade`; `status` shows each worktree's active env + state (and `--env`
+   forces a comparison env). Fixtures + goldens + the R3 byte-identical legacy
+   back-compat golden. (D23–D27, D30) ✅ **DONE** (2026-07-14).
 2. **CLI restructure → `cobra`, docker-style hybrid (D29, revises D6).**
    Top-level env verbs `use` / `envs` / `rm` (env is the primary domain — no
    redundant `env` prefix), the one `envkeep config <get|set|list|unset>` group,
    shell completions. Switch verb is `use`; `set` is reserved for `config set`.
+   Also `status --all-envs` (the full worktree × environment matrix — deferred
+   from step 1 because a true matrix needs a per-env base the marker does not
+   store today).
 3. **`use` cascade fan-out (D28).** Repo-wide switch fanning out to every
    worktree, `--dry-run`, skip-not-clobber for `ahead`/`conflict` worktrees.
 
