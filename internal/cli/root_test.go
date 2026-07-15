@@ -155,6 +155,25 @@ func TestRootHookEmitsSnippet(t *testing.T) {
 	}
 }
 
+// TestCompleteEnvNames verifies completeEnvNames lists existing environment
+// names (sorted) for --env shell completion, backed by vault.Environments.
+func TestCompleteEnvNames(t *testing.T) {
+	f := fixture(t)
+	// create two environments by pushing with --create
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "K=1\n")
+	t.Chdir(f["WT_A"])
+	if _, err := execRoot(t, "push", "--env", "prod", "--create"); err != nil {
+		t.Fatalf("create prod: %v", err)
+	}
+	if _, err := execRoot(t, "push", "--env", "homo", "--create"); err != nil {
+		t.Fatalf("create homo: %v", err)
+	}
+	got, _ := completeEnvNames("")
+	if len(got) != 2 || got[0] != "homo" || got[1] != "prod" {
+		t.Errorf("completeEnvNames = %v, want [homo prod]", got)
+	}
+}
+
 // TestProcessCwd asserts processCwd is just os.Getwd, wired for later
 // subcommands (status/push/pull/check) in A2-A5.
 func TestProcessCwd(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/carvalhosauro/envkeep/internal/buildinfo"
 	"github.com/carvalhosauro/envkeep/internal/hook"
+	"github.com/carvalhosauro/envkeep/internal/vault"
 )
 
 // Process exit codes: 0 success, 1 error (runtime or usage). The stdlib version
@@ -73,6 +74,27 @@ func processCwd() (string, error) {
 	return os.Getwd()
 }
 
+// completeEnvNames lists existing environment names for --env shell completion.
+func completeEnvNames(_ string) ([]string, cobra.ShellCompDirective) {
+	cwd, err := processCwd()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	ctx, err := Resolve(cwd, "", "")
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	envs, err := vault.Environments(ctx.CommonDir)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	names := make([]string, len(envs))
+	for i, e := range envs {
+		names[i] = e.String()
+	}
+	return names, cobra.ShellCompDirectiveNoFileComp
+}
+
 func newStatusCmd() *cobra.Command {
 	var file, envName string
 	cmd := &cobra.Command{
@@ -89,6 +111,9 @@ func newStatusCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&file, "file", "", "tracked env filename (overrides repo config)")
 	cmd.Flags().StringVar(&envName, "env", "", "environment to compare against (default: each worktree's active env)")
+	_ = cmd.RegisterFlagCompletionFunc("env", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+		return completeEnvNames("")
+	})
 	return cmd
 }
 
@@ -171,4 +196,7 @@ func addSyncFlags(cmd *cobra.Command, file, envName *string, create, dry *bool) 
 	cmd.Flags().StringVar(envName, "env", "", "target environment (default: this worktree's active env)")
 	cmd.Flags().BoolVarP(create, "create", "c", false, "create the environment if it does not exist")
 	cmd.Flags().BoolVar(dry, "dry-run", false, "show what would change without writing")
+	_ = cmd.RegisterFlagCompletionFunc("env", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+		return completeEnvNames("")
+	})
 }
