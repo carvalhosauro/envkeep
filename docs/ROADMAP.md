@@ -62,15 +62,23 @@ resolved decisions in [`designs/003-named-environments.md`](designs/003-named-en
    `cascade`; `status` shows each worktree's active env + state (and `--env`
    forces a comparison env). Fixtures + goldens + the R3 byte-identical legacy
    back-compat golden. (D23–D27, D30) ✅ **DONE** (2026-07-14).
-2. **CLI restructure → `cobra`, docker-style hybrid (D29, revises D6).**
-   Top-level env verbs `use` / `envs` / `rm` (env is the primary domain — no
-   redundant `env` prefix), the one `envkeep config <get|set|list|unset>` group,
-   shell completions. Switch verb is `use`; `set` is reserved for `config set`.
-   Also `status --all-envs` (the full worktree × environment matrix — deferred
-   from step 1 because a true matrix needs a per-env base the marker does not
-   store today).
-3. **`use` cascade fan-out (D28).** Repo-wide switch fanning out to every
-   worktree, `--dry-run`, skip-not-clobber for `ahead`/`conflict` worktrees.
+1.9. **Domain-model refactor** (post-review, pre-cobra). ✅ **DONE (2026-07-14).**
+   Leaf `internal/env` (`env.Name`), consolidated drift state machine
+   (`assessWorktree`), `state.Stat` DTO, and the `Repo` / `Context` split (D31).
+   Internal only, no behavior change — tightens the boundaries before the CLI
+   grows. See STATUS log.
+2. **CLI restructure → `cobra`, docker-style hybrid (D29, revises D6).** Plan in
+   [`designs/004-cobra-cli.md`](designs/004-cobra-cli.md) (D31). Sub-phased:
+   - **2a** — adopt cobra, port the existing verbs (`status`/`push`/`pull`/
+     `check`/`hook`/`version`) with identical behavior + shell completions
+     (static + dynamic `--env` from `vault/*/`). Commands live in `internal/cli`.
+   - **2b** — the docker-hybrid env surface: top-level `use <env>` (re-point the
+     current worktree, D31) / `envs` (list) / `rm <env>` (guarded, E5), and the
+     one `envkeep config <get|set|list|unset>` group. `set` is reserved for
+     `config set`.
+3. **Deferred (2d):** `use` cascade fan-out (D28 — repo-wide, `--dry-run`,
+   skip-not-clobber); `status --all-envs` (the full worktree × environment
+   matrix — needs a per-env base the marker does not store today).
 
 **Trigger-gated within this feature:** the `shared` layer (Model B) — added only
 if re-declaring common keys across envs becomes real pain (D24 trigger). The

@@ -560,3 +560,24 @@ and a three-way composition for a need that does not exist yet.
 **Reconsider-trigger:** A real machine-local value must differ by environment;
 then add `.env.override.<env>` layered over the single override.
 **Status:** ACCEPTED (design 003 — pending implementation).
+
+## D31 — Cobra command definitions live in `internal/cli`; `use` re-points one worktree
+
+**Decision:** When the CLI moves to `cobra` (D29, phase 2), the `*cobra.Command`
+definitions and an `Execute()` entry live in `internal/cli` (which also owns the
+command logic), and `cmd/envkeep/main.go` shrinks to `os.Exit(cli.Execute())`.
+The `use <env>` verb re-points **only the current worktree** (sets its
+`marker.Env`, reusing pull's re-point path); it does not change the repo
+`default_env` (that moves only on first env creation, D27). Repo-wide fan-out is
+the `cascade` behavior (D28). See `docs/designs/004-cobra-cli.md`.
+**Why:** `cmd/envkeep` is excluded from coverage (D21) as thin dispatch; keeping
+the cobra layer there would leave a growing command surface unmeasured and
+awkward to unit-test. Homing the commands in `internal/cli` keeps them tested and
+counted, and leaves `main.go` a trivial entrypoint. Per-worktree `use` matches
+the per-worktree active-env model (D25) and keeps the common switch predictable
+and non-destructive; the repo-wide sweep stays an explicit, opt-in `cascade`.
+**Rejected:** Command definitions in `cmd/envkeep` (untested/uncounted, D21); a
+`use` that also flips `default_env` (surprising, couples a local switch to repo
+state); a top-level `set` verb (overloads `config set`, D29).
+**Reconsider-trigger:** None foreseen.
+**Status:** ACCEPTED (design 004 — pending implementation).
