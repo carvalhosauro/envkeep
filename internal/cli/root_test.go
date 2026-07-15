@@ -124,6 +124,22 @@ func TestRootPushPullRoundTrip(t *testing.T) {
 	}
 }
 
+// TestRootCheckSilentWhenClean verifies the cobra `check` subcommand stays
+// silent for a worktree right after its .env is pushed to the vault.
+func TestRootCheckSilentWhenClean(t *testing.T) {
+	f := fixture(t)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=value\n")
+	t.Chdir(f["WT_A"])
+	mustPush(t, f["WT_A"])
+	out, err := execRoot(t, "check")
+	if err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	if strings.TrimSpace(out) != "" {
+		t.Errorf("check should be silent when clean, got:\n%s", out)
+	}
+}
+
 // TestProcessCwd asserts processCwd is just os.Getwd, wired for later
 // subcommands (status/push/pull/check) in A2-A5.
 func TestProcessCwd(t *testing.T) {

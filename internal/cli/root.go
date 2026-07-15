@@ -48,6 +48,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newStatusCmd())
 	root.AddCommand(newPushCmd(), newPullCmd())
+	root.AddCommand(newCheckCmd())
 	return root
 }
 
@@ -124,6 +125,24 @@ func newPullCmd() *cobra.Command {
 		},
 	}
 	addSyncFlags(cmd, &file, &envName, &create, &dry)
+	return cmd
+}
+
+func newCheckCmd() *cobra.Command {
+	var porcelain bool
+	cmd := &cobra.Command{
+		Use:   "check",
+		Short: "quiet drift check for the current worktree (for shell hooks)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cwd, err := processCwd()
+			if err != nil {
+				return err
+			}
+			return Check(cmd.OutOrStdout(), cwd, porcelain)
+		},
+	}
+	cmd.Flags().BoolVar(&porcelain, "porcelain", false, "print a bare state token (for scripts/prompts)")
 	return cmd
 }
 
