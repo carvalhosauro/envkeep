@@ -52,6 +52,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newPushCmd(), newPullCmd())
 	root.AddCommand(newCheckCmd())
 	root.AddCommand(newHookCmd())
+	root.AddCommand(newEnvsCmd())
 	return root
 }
 
@@ -186,6 +187,21 @@ func newHookCmd() *cobra.Command {
 			}
 			_, err = fmt.Fprint(cmd.OutOrStdout(), snippet)
 			return err
+		},
+	}
+}
+
+func newEnvsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "envs",
+		Short: "list the repo's environments, marking the default with *",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cwd, err := processCwd()
+			if err != nil {
+				return err
+			}
+			return Envs(cmd.OutOrStdout(), cwd)
 		},
 	}
 }
