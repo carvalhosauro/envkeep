@@ -102,6 +102,28 @@ func TestRootStatusPortsBehavior(t *testing.T) {
 	}
 }
 
+// TestRootPushPullRoundTrip verifies the cobra push/pull subcommands round
+// -trip a value from one worktree's .env through the vault into another.
+func TestRootPushPullRoundTrip(t *testing.T) {
+	f := fixture(t)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=value\nOTHER=x\n")
+	t.Chdir(f["WT_A"])
+	if _, err := execRoot(t, "push"); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	t.Chdir(f["WT_B"])
+	if _, err := execRoot(t, "pull"); err != nil {
+		t.Fatalf("pull: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(f["WT_B"], ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "KEY=value") {
+		t.Errorf("wt-b .env missing KEY after pull:\n%s", got)
+	}
+}
+
 // TestProcessCwd asserts processCwd is just os.Getwd, wired for later
 // subcommands (status/push/pull/check) in A2-A5.
 func TestProcessCwd(t *testing.T) {

@@ -47,6 +47,7 @@ func newRootCmd() *cobra.Command {
 	root.SetVersionTemplate("envkeep {{.Version}}\n")
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newStatusCmd())
+	root.AddCommand(newPushCmd(), newPullCmd())
 	return root
 }
 
@@ -86,4 +87,50 @@ func newStatusCmd() *cobra.Command {
 	cmd.Flags().StringVar(&file, "file", "", "tracked env filename (overrides repo config)")
 	cmd.Flags().StringVar(&envName, "env", "", "environment to compare against (default: each worktree's active env)")
 	return cmd
+}
+
+func newPushCmd() *cobra.Command {
+	var file, envName string
+	var create, dry bool
+	cmd := &cobra.Command{
+		Use:   "push",
+		Short: "merge this worktree's env into the environment's vault",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cwd, err := processCwd()
+			if err != nil {
+				return err
+			}
+			return Push(cmd.OutOrStdout(), cwd, file, envName, create, dry)
+		},
+	}
+	addSyncFlags(cmd, &file, &envName, &create, &dry)
+	return cmd
+}
+
+func newPullCmd() *cobra.Command {
+	var file, envName string
+	var create, dry bool
+	cmd := &cobra.Command{
+		Use:   "pull",
+		Short: "write the environment's vault into this worktree's env",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cwd, err := processCwd()
+			if err != nil {
+				return err
+			}
+			return Pull(cmd.OutOrStdout(), cwd, file, envName, create, dry)
+		},
+	}
+	addSyncFlags(cmd, &file, &envName, &create, &dry)
+	return cmd
+}
+
+// addSyncFlags registers the flags shared by push and pull.
+func addSyncFlags(cmd *cobra.Command, file, envName *string, create, dry *bool) {
+	cmd.Flags().StringVar(file, "file", "", "tracked env filename (overrides repo config)")
+	cmd.Flags().StringVar(envName, "env", "", "target environment (default: this worktree's active env)")
+	cmd.Flags().BoolVarP(create, "create", "c", false, "create the environment if it does not exist")
+	cmd.Flags().BoolVar(dry, "dry-run", false, "show what would change without writing")
 }
