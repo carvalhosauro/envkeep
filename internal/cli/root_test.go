@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 
@@ -27,5 +28,70 @@ func TestRootVersion(t *testing.T) {
 	}
 	if !strings.Contains(out, "envkeep") || !strings.Contains(out, buildinfo.Version) {
 		t.Errorf("version output = %q, want it to contain envkeep + %q", out, buildinfo.Version)
+	}
+}
+
+// TestRootVersionAliases verifies the pre-cobra `version`/`--version`/`-v`
+// trio all still print byte-identical "envkeep <version>\n" output, matching
+// what the old fmt.Println("envkeep", buildinfo.Version) produced.
+func TestRootVersionAliases(t *testing.T) {
+	want := "envkeep " + buildinfo.Version + "\n"
+
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"subcommand", []string{"version"}},
+		{"long-flag", []string{"--version"}},
+		{"short-flag", []string{"-v"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := execRoot(t, tc.args...)
+			if err != nil {
+				t.Fatalf("%v: %v", tc.args, err)
+			}
+			if out != want {
+				t.Errorf("%v output = %q, want %q", tc.args, out, want)
+			}
+		})
+	}
+}
+
+// TestExecute exercises Execute()'s success and error branches directly,
+// since it drives os.Args rather than accepting an injected arg slice.
+func TestExecute(t *testing.T) {
+	origArgs := os.Args
+	defer func() { os.Args = origArgs }()
+
+	t.Run("success", func(t *testing.T) {
+		os.Args = []string{"envkeep", "version"}
+		if code := Execute(); code != exitOK {
+			t.Errorf("Execute() = %d, want %d", code, exitOK)
+		}
+	})
+
+	t.Run("error", func(t *testing.T) {
+		os.Args = []string{"envkeep", "definitely-not-a-command"}
+		if code := Execute(); code != exitError {
+			t.Errorf("Execute() = %d, want %d", code, exitError)
+		}
+	})
+}
+
+// TestProcessCwd asserts processCwd is just os.Getwd, wired for later
+// subcommands (status/push/pull/check) in A2-A5.
+func TestProcessCwd(t *testing.T) {
+	got, err := processCwd()
+	if err != nil {
+		t.Fatalf("processCwd() error = %v", err)
+	}
+	want, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("os.Getwd() error = %v", err)
+	}
+	if got != want {
+		t.Errorf("processCwd() = %q, want %q", got, want)
 	}
 }

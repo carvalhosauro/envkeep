@@ -39,6 +39,12 @@ func newRootCmd() *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
+	// Setting Version makes cobra auto-bind --version (shorthand -v, since v is
+	// otherwise free), restoring the pre-cobra `--version`/`-v` aliases. The
+	// template reproduces the exact old output: "envkeep <version>\n". The
+	// `version` subcommand below is kept alongside it (plan-specified).
+	root.Version = buildinfo.Version
+	root.SetVersionTemplate("envkeep {{.Version}}\n")
 	root.AddCommand(newVersionCmd())
 	return root
 }
@@ -57,8 +63,7 @@ func newVersionCmd() *cobra.Command {
 }
 
 // processCwd returns the working directory the command was invoked in.
-//
-//nolint:unused // wired into the status/push/pull/check subcommands ported in A2-A5
+// Wired into the status/push/pull/check subcommands ported in A2-A5.
 func processCwd() (string, error) {
 	return os.Getwd()
 }
