@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -78,6 +79,27 @@ func TestExecute(t *testing.T) {
 			t.Errorf("Execute() = %d, want %d", code, exitError)
 		}
 	})
+}
+
+// TestRootStatusPortsBehavior verifies the cobra `status` subcommand still
+// reports "clean" for a worktree right after its .env is pushed to the vault.
+// push isn't ported to cobra until A3, so the vault is seeded here via the
+// existing mustPush function-level helper instead of execRoot(t, "push"),
+// keeping A2 independently testable.
+func TestRootStatusPortsBehavior(t *testing.T) {
+	f := fixture(t)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=value\n")
+	t.Chdir(f["WT_A"])
+
+	mustPush(t, f["WT_A"])
+
+	out, err := execRoot(t, "status")
+	if err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if !strings.Contains(out, "clean") {
+		t.Errorf("status output missing 'clean':\n%s", out)
+	}
 }
 
 // TestProcessCwd asserts processCwd is just os.Getwd, wired for later

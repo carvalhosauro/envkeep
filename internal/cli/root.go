@@ -46,6 +46,7 @@ func newRootCmd() *cobra.Command {
 	root.Version = buildinfo.Version
 	root.SetVersionTemplate("envkeep {{.Version}}\n")
 	root.AddCommand(newVersionCmd())
+	root.AddCommand(newStatusCmd())
 	return root
 }
 
@@ -66,4 +67,23 @@ func newVersionCmd() *cobra.Command {
 // Wired into the status/push/pull/check subcommands ported in A2-A5.
 func processCwd() (string, error) {
 	return os.Getwd()
+}
+
+func newStatusCmd() *cobra.Command {
+	var file, envName string
+	cmd := &cobra.Command{
+		Use:   "status",
+		Short: "show each worktree's active env and sync state vs the vault",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cwd, err := processCwd()
+			if err != nil {
+				return err
+			}
+			return Status(cmd.OutOrStdout(), cwd, file, envName)
+		},
+	}
+	cmd.Flags().StringVar(&file, "file", "", "tracked env filename (overrides repo config)")
+	cmd.Flags().StringVar(&envName, "env", "", "environment to compare against (default: each worktree's active env)")
+	return cmd
 }
