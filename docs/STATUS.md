@@ -281,3 +281,21 @@ Still open:
   by driving the built binary through the full lifecycle. `status --all-envs`
   matrix deferred to step 2 (needs a per-env base the marker does not store).
   Cobra restructure (step 2) is next.
+- **2026-07-14 · Domain-model refactor (post-review, pre-cobra).** Before growing
+  the CLI surface, tightened the types/boundaries the env work exposed. New leaf
+  `internal/env` package with `EnvName` type (`env.Name`; renamed from EnvName to
+  satisfy revive's stutter rule) + `Unnamed`/`Validate`/`IsUnnamed`/`String`,
+  threaded through vault/state/config/cli (replaces `vault.ValidEnvName`,
+  string-typed env params). Consolidated the drift state machine: `check` and
+  `status` now share one `assessWorktree` (`cli/drift.go`, `drift` result type) —
+  no more duplicated fast-path/slow-path. `state.LoadStat` returns a `Stat` DTO
+  (was 5 loose returns) and `Marker` embeds `Stat`, so a stat field is defined
+  once and JSON is unchanged; symmetric with `Load`'s `(Marker, bool, error)`.
+  Split `cli.Context` into `Repo` (repo-level: CommonDir/EnvFile/EnvFlag/
+  DefaultEnv, owns vaultPath/resolveEnv/ensureTargetEnv/adoptEnv/worktreeAt) +
+  the invoking worktree's `worktreePaths` (self); `assessWorktree(r *Repo, wt
+  worktreePaths, …)` now has honest deps. Migration moved to `vault.MigrateLegacy`
+  (vault owns the layout). All internal only — no behavior change; public command
+  signatures unchanged. Verified: lint 0, race pass, coverage tiers pass (total
+  84.4%), e2e driven against the binary identical. Cobra restructure (step 2) is
+  next — to be planned before implementing.
