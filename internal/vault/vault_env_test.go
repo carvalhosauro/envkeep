@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/carvalhosauro/envkeep/internal/env"
 )
 
 func TestPathForEnv(t *testing.T) {
@@ -65,15 +67,25 @@ func TestEnvironmentsAndExists(t *testing.T) {
 	}
 }
 
-func TestValidEnvName(t *testing.T) {
-	for _, ok := range []string{"prod", "homo-1", "a.b_c", "Dev2"} {
-		if err := ValidEnvName(ok); err != nil {
-			t.Errorf("ValidEnvName(%q) = %v, want nil", ok, err)
-		}
+func TestMigrateLegacy(t *testing.T) {
+	common := t.TempDir()
+
+	// No legacy flat vault → nothing to migrate.
+	moved, err := MigrateLegacy(common, ".env", "prod")
+	if err != nil || moved {
+		t.Fatalf("MigrateLegacy (no flat vault) = moved:%v err:%v; want false,nil", moved, err)
 	}
-	for _, bad := range []string{"", ".", "..", "shared", "_base", "a/b", "a b", "x*", "up/../x"} {
-		if err := ValidEnvName(bad); err == nil {
-			t.Errorf("ValidEnvName(%q) = nil, want error", bad)
-		}
+
+	// A legacy flat vault → migrated into prod; the flat file is gone.
+	writeVaultFile(t, PathForEnv(common, env.Unnamed, ".env"))
+	moved, err = MigrateLegacy(common, ".env", "prod")
+	if err != nil || !moved {
+		t.Fatalf("MigrateLegacy = moved:%v err:%v; want true,nil", moved, err)
+	}
+	if _, err := os.Stat(PathForEnv(common, env.Unnamed, ".env")); !os.IsNotExist(err) {
+		t.Error("legacy flat vault should be gone after migration")
+	}
+	if !EnvExists(common, "prod") {
+		t.Error("prod should exist after migration")
 	}
 }

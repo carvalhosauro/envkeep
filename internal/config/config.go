@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/carvalhosauro/envkeep/internal/env"
 	"github.com/carvalhosauro/envkeep/internal/envfile"
 	"github.com/carvalhosauro/envkeep/internal/fsutil"
 )
@@ -34,9 +35,9 @@ const (
 type Config struct {
 	EnvFile string
 	// DefaultEnv is the environment used when a worktree has no active env of
-	// its own yet. Empty means the repo has not adopted environments (the legacy
-	// unnamed vault, D27).
-	DefaultEnv string
+	// its own yet. Unnamed means the repo has not adopted environments (the
+	// legacy unnamed vault, D27).
+	DefaultEnv env.Name
 	// Cascade, when true, makes an environment switch (`use`) fan out to every
 	// worktree instead of only the current one (D28). Default false.
 	Cascade bool
@@ -65,7 +66,7 @@ func Load(commonDir string) (Config, error) {
 		cfg.EnvFile = v
 	}
 	if v, ok := f.Get(keyDefaultEnv); ok {
-		cfg.DefaultEnv = v
+		cfg.DefaultEnv = env.Name(v)
 	}
 	if v, ok := f.Get(keyCascade); ok {
 		// Tolerant parse: an unparseable value is treated as the false default
@@ -81,8 +82,8 @@ func Load(commonDir string) (Config, error) {
 func Save(commonDir string, cfg Config) error {
 	f := envfile.New()
 	f.Set(keyEnvFile, cfg.EnvFile)
-	if cfg.DefaultEnv != "" {
-		f.Set(keyDefaultEnv, cfg.DefaultEnv)
+	if !cfg.DefaultEnv.IsUnnamed() {
+		f.Set(keyDefaultEnv, cfg.DefaultEnv.String())
 	}
 	if cfg.Cascade {
 		f.Set(keyCascade, "true")

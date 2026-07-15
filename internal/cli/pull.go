@@ -25,27 +25,27 @@ func Pull(w io.Writer, cwd, envFileFlag, envFlag string, create, dryRun bool) er
 	}
 	p := &printer{w: w}
 
-	marker, hasMarker, err := state.Load(ctx.GitDir)
+	marker, hasMarker, err := state.Load(ctx.self.gitDir)
 	if err != nil {
 		return err
 	}
 	activeEnv := ctx.resolveEnv(marker.Env)
-	if err := ensureTargetEnv(ctx, activeEnv, create, dryRun); err != nil {
+	if err := ctx.ensureTargetEnv(activeEnv, create, dryRun); err != nil {
 		return err
 	}
 
-	vaultEnv, vaultExists, err := readVaultFor(ctx, activeEnv)
+	vaultEnv, vaultExists, err := ctx.readVault(activeEnv)
 	if err != nil {
 		return err
 	}
 	if !vaultExists && !create {
 		return errors.New("no vault yet; run 'envkeep push' first")
 	}
-	overrideEnv, err := readEnvOrEmpty(ctx.OverridePath)
+	overrideEnv, err := readEnvOrEmpty(ctx.self.overridePath)
 	if err != nil {
 		return err
 	}
-	localFile, localExists, err := readFile(ctx.LocalPath)
+	localFile, localExists, err := readFile(ctx.self.localPath)
 	if err != nil {
 		return err
 	}
@@ -118,7 +118,7 @@ func Pull(w io.Writer, cwd, envFileFlag, envFlag string, create, dryRun bool) er
 			localFile.Delete(k)
 		}
 	}
-	if err := fsutil.WriteFileAtomic(ctx.LocalPath, localFile.Render(), localPerm(ctx.LocalPath, localExists)); err != nil {
+	if err := fsutil.WriteFileAtomic(ctx.self.localPath, localFile.Render(), localPerm(ctx.self.localPath, localExists)); err != nil {
 		return err
 	}
 	if err := saveMarker(ctx, activeEnv, vaultEnv); err != nil {

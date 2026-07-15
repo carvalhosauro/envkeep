@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/carvalhosauro/envkeep/internal/config"
+	"github.com/carvalhosauro/envkeep/internal/env"
 	"github.com/carvalhosauro/envkeep/internal/vault"
 )
 
@@ -20,11 +21,11 @@ func pushEnv(t *testing.T, cwd, env string, create bool) string {
 	return b.String()
 }
 
-func readEnvVault(t *testing.T, common, env string) map[string]string {
+func readEnvVault(t *testing.T, common, name string) map[string]string {
 	t.Helper()
-	m, err := vault.NewFileStore(vault.PathForEnv(common, env, ".env")).Read()
+	m, err := vault.NewFileStore(vault.PathForEnv(common, env.Name(name), ".env")).Read()
 	if err != nil {
-		t.Fatalf("read vault %q: %v", env, err)
+		t.Fatalf("read vault %q: %v", name, err)
 	}
 	return m
 }

@@ -12,9 +12,8 @@ import (
 func TestSaveLoadRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	want := Marker{
-		Base:       envfile.Env{"A": "1", "B": "hello world"},
-		LocalMTime: 111,
-		VaultMTime: 222,
+		Stat: Stat{LocalMTime: 111, VaultMTime: 222},
+		Base: envfile.Env{"A": "1", "B": "hello world"},
 	}
 	if err := Save(dir, want); err != nil {
 		t.Fatal(err)
@@ -54,27 +53,26 @@ func TestLoadMalformedErrors(t *testing.T) {
 func TestLoadStatReadsMtimesSkippingBase(t *testing.T) {
 	dir := t.TempDir()
 	m := Marker{
-		Base:       envfile.Env{"A": "1", "B": "hello world"},
-		LocalMTime: 111,
-		VaultMTime: 222,
+		Stat: Stat{LocalMTime: 111, VaultMTime: 222},
+		Base: envfile.Env{"A": "1", "B": "hello world"},
 	}
 	if err := Save(dir, m); err != nil {
 		t.Fatal(err)
 	}
-	_, lm, vm, ok, err := LoadStat(dir)
+	s, ok, err := LoadStat(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !ok {
 		t.Fatal("LoadStat ok = false after Save")
 	}
-	if lm != 111 || vm != 222 {
-		t.Errorf("LoadStat mtimes = (%d, %d), want (111, 222)", lm, vm)
+	if s.LocalMTime != 111 || s.VaultMTime != 222 {
+		t.Errorf("LoadStat mtimes = (%d, %d), want (111, 222)", s.LocalMTime, s.VaultMTime)
 	}
 }
 
 func TestLoadStatMissingIsNotError(t *testing.T) {
-	_, _, _, ok, err := LoadStat(t.TempDir())
+	_, ok, err := LoadStat(t.TempDir())
 	if err != nil {
 		t.Fatalf("LoadStat of missing marker: %v", err)
 	}
@@ -88,7 +86,7 @@ func TestLoadStatMalformedErrors(t *testing.T) {
 	if err := os.WriteFile(Path(dir), []byte("{not valid json"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, _, err := LoadStat(dir); err == nil {
+	if _, _, err := LoadStat(dir); err == nil {
 		t.Error("LoadStat of malformed marker: want error, got nil")
 	}
 }

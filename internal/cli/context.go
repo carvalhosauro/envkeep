@@ -1,5 +1,5 @@
-// Package cli wires the pure layers (envfile, vault, state, config) together
-// with git discovery to implement the status/push/pull commands.
+// Package cli wires the pure layers (env, envfile, vault, state, config)
+// together with git discovery to implement the status/push/pull/check commands.
 package cli
 
 import (
@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/carvalhosauro/envkeep/internal/config"
+	"github.com/carvalhosauro/envkeep/internal/env"
 	"github.com/carvalhosauro/envkeep/internal/envfile"
 	"github.com/carvalhosauro/envkeep/internal/git"
 	"github.com/carvalhosauro/envkeep/internal/vault"
@@ -20,19 +21,34 @@ import (
 // tracked file and must be gitignored by the user (D9).
 const overrideSuffix = ".override"
 
-// Context is the resolved repo location for the worktree a command runs in.
-// The vault path depends on the active environment, which is resolved per
-// command (it needs the worktree's marker), so Context exposes env-aware
-// accessors rather than a fixed vault path.
+// Repo is the repo-level context shared by every worktree of a repository:
+// where the vaults live (CommonDir), the tracked filename, and the environment
+// resolution inputs. Most command logic — vault access, env resolution, env
+// creation — needs only this and a target environment, not any particular
+// worktree, so it hangs off Repo rather than Context.
+type Repo struct {
+	CommonDir  string
+	EnvFile    string
+	EnvFlag    env.Name // raw --env value (Unnamed if unset)
+	DefaultEnv env.Name // config default_env (Unnamed if unset / legacy)
+}
+
+// worktreePaths bundles the paths a single worktree's drift assessment needs:
+// its gitdir (where the marker lives), its local env file, and its override
+// file. It is the per-worktree axis, separate from Repo so assessWorktree can
+// run over every worktree, not just the invoking one.
+type worktreePaths struct {
+	gitDir       string
+	localPath    string
+	overridePath string
+}
+
+// Context is a Repo plus the worktree the command was invoked in (self). Repo's
+// methods and fields are promoted, so ctx.vaultPath / ctx.resolveEnv /
+// ctx.CommonDir read naturally; self carries the invoking worktree's paths.
 type Context struct {
-	CommonDir    string
-	GitDir       string // per-worktree gitdir (holds the sync marker)
-	Toplevel     string // worktree root
-	EnvFile      string // tracked filename
-	LocalPath    string // Toplevel/EnvFile
-	OverridePath string // Toplevel/EnvFile+overrideSuffix
-	EnvFlag      string // raw --env value ("" if unset)
-	DefaultEnv   string // repo config default_env ("" if unset / legacy)
+	*Repo
+	self worktreePaths
 }
 
 // Resolve discovers the repo from cwd and builds the command context. envFileFlag
@@ -53,123 +69,162 @@ func Resolve(cwd, envFileFlag, envFlag string) (*Context, error) {
 	if envFileFlag != "" {
 		envFile = envFileFlag
 	}
+	repo := &Repo{
+		CommonDir:  p.CommonDir,
+		EnvFile:    envFile,
+		EnvFlag:    env.Name(envFlag),
+		DefaultEnv: cfg.DefaultEnv,
+	}
+	// The invoking worktree's gitdir came from Locate, so build self directly
+	// (no extra git call — check stays cheap, D7).
 	return &Context{
-		CommonDir:    p.CommonDir,
-		GitDir:       p.GitDir,
-		Toplevel:     p.Toplevel,
-		EnvFile:      envFile,
-		LocalPath:    filepath.Join(p.Toplevel, envFile),
-		OverridePath: filepath.Join(p.Toplevel, envFile+overrideSuffix),
-		EnvFlag:      envFlag,
-		DefaultEnv:   cfg.DefaultEnv,
+		Repo: repo,
+		self: repo.worktreePathsAt(p.Toplevel, p.GitDir),
 	}, nil
 }
 
+// worktree returns the paths of the worktree the command was invoked in.
+func (c *Context) worktree() worktreePaths { return c.self }
+
 // resolveEnv applies the environment precedence (D25): an explicit --env flag
 // wins; otherwise the worktree's own active env (its marker); otherwise the repo
-// default_env; otherwise "" (the legacy unnamed environment). markerEnv is ""
+// default_env; otherwise Unnamed (the legacy environment). markerEnv is Unnamed
 // when the worktree has no marker or a legacy marker.
-func (c *Context) resolveEnv(markerEnv string) string {
+func (r *Repo) resolveEnv(markerEnv env.Name) env.Name {
 	switch {
-	case c.EnvFlag != "":
-		return c.EnvFlag
-	case markerEnv != "":
+	case !r.EnvFlag.IsUnnamed():
+		return r.EnvFlag
+	case !markerEnv.IsUnnamed():
 		return markerEnv
 	default:
-		return c.DefaultEnv
+		return r.DefaultEnv
 	}
 }
 
-// vaultPath returns the vault file path for env in this repo.
-func (c *Context) vaultPath(env string) string {
-	return vault.PathForEnv(c.CommonDir, env, c.EnvFile)
+// vaultPath returns the vault file path for e in this repo.
+func (r *Repo) vaultPath(e env.Name) string {
+	return vault.PathForEnv(r.CommonDir, e, r.EnvFile)
 }
 
-// vaultStore returns a vault Store bound to env.
-func (c *Context) vaultStore(env string) vault.Store {
-	return vault.NewFileStore(c.vaultPath(env))
+// vaultStore returns a vault Store bound to e.
+func (r *Repo) vaultStore(e env.Name) vault.Store {
+	return vault.NewFileStore(r.vaultPath(e))
 }
 
 // vaultDir returns the directory that holds every environment's vault (the
 // parent of the legacy flat vault path).
-func (c *Context) vaultDir() string {
-	return filepath.Dir(c.vaultPath(""))
+func (r *Repo) vaultDir() string {
+	return filepath.Dir(r.vaultPath(env.Unnamed))
 }
 
-// readVaultFor reads env's vault, mapping the fresh (not-yet-created) state to
-// an empty set with exists=false.
-func readVaultFor(ctx *Context, env string) (envfile.Env, bool, error) {
-	e, err := ctx.vaultStore(env).Read()
+// readVault reads e's vault, mapping the fresh (not-yet-created) state to an
+// empty set with exists=false.
+func (r *Repo) readVault(e env.Name) (envfile.Env, bool, error) {
+	got, err := r.vaultStore(e).Read()
 	if errors.Is(err, vault.ErrNotFound) {
 		return envfile.Env{}, false, nil
 	}
 	if err != nil {
 		return nil, false, err
 	}
-	return e, true, nil
+	return got, true, nil
+}
+
+// worktreePathsAt builds a worktree's paths from its root and gitdir, with no
+// git call (both are already known).
+func (r *Repo) worktreePathsAt(toplevel, gitDir string) worktreePaths {
+	return worktreePaths{
+		gitDir:       gitDir,
+		localPath:    filepath.Join(toplevel, r.EnvFile),
+		overridePath: filepath.Join(toplevel, r.EnvFile+overrideSuffix),
+	}
+}
+
+// worktreeAt resolves another worktree's paths, shelling out once for its
+// gitdir — used by status to inspect every worktree. The invoking worktree is
+// built directly in Resolve, so check never pays this git call (D7).
+func (r *Repo) worktreeAt(toplevel string) (worktreePaths, error) {
+	gitDir, err := git.Dir(toplevel)
+	if err != nil {
+		return worktreePaths{}, err
+	}
+	return r.worktreePathsAt(toplevel, gitDir), nil
 }
 
 // ensureTargetEnv enforces the git-branch existence rule (D26) and performs
-// first-env adoption (D27). The unnamed env ("") is always a no-op. For a named
-// env: if it already exists, nil; if it does not exist and create is false, an
+// first-env adoption (D27). The unnamed env is always a no-op. For a named env:
+// if it already exists, nil; if it does not exist and create is false, an
 // "unknown environment" error; if create is true, the name is validated and
-// (unless dryRun) the env is adopted — migrating the legacy flat vault into it
-// when it is the first env, and setting default_env when unset.
-func ensureTargetEnv(ctx *Context, env string, create, dryRun bool) error {
-	if env == "" || vault.EnvExists(ctx.CommonDir, env) {
+// (unless dryRun) the env is adopted.
+func (r *Repo) ensureTargetEnv(e env.Name, create, dryRun bool) error {
+	if e.IsUnnamed() || vault.EnvExists(r.CommonDir, e) {
 		return nil
 	}
 	if !create {
-		return fmt.Errorf("unknown environment %q; create it with --create (or --env with an existing environment)", env)
+		return fmt.Errorf("unknown environment %q; create it with --create (or --env with an existing environment)", e.String())
 	}
-	if err := vault.ValidEnvName(env); err != nil {
+	if err := e.Validate(); err != nil {
 		return err
 	}
 	if dryRun {
 		return nil // preview only — never mutate on a dry run
 	}
-	return adoptEnv(ctx, env)
+	return r.adoptEnv(e)
 }
 
 // adoptEnv creates a new environment: if it is the repo's first, the legacy flat
-// vault (if any) is migrated into it (D27), and default_env is set when unset so
-// later commands resolve the environment. It mutates ctx.DefaultEnv to match.
-func adoptEnv(ctx *Context, env string) error {
-	existing, err := vault.Environments(ctx.CommonDir)
+// vault (if any) is migrated into it (D27, via vault.MigrateLegacy — vault owns
+// the layout), and default_env is set when unset so later commands resolve the
+// environment. It updates r.DefaultEnv to match.
+func (r *Repo) adoptEnv(e env.Name) error {
+	existing, err := vault.Environments(r.CommonDir)
 	if err != nil {
 		return err
 	}
 	if len(existing) == 0 {
-		// First environment: migrate the legacy flat vault into it if present, so
-		// the shared values carry over and no stray flat vault is left behind.
-		legacy := ctx.vaultPath("")
-		if _, statErr := os.Stat(legacy); statErr == nil {
-			target := ctx.vaultPath(env)
-			if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-				return fmt.Errorf("migrate legacy vault: %w", err)
-			}
-			if err := os.Rename(legacy, target); err != nil {
-				return fmt.Errorf("migrate legacy vault: %w", err)
-			}
-			fmt.Fprintf(os.Stderr, "envkeep: migrated legacy vault to environment %q\n", env)
+		migrated, err := vault.MigrateLegacy(r.CommonDir, r.EnvFile, e)
+		if err != nil {
+			return err
+		}
+		if migrated {
+			fmt.Fprintf(os.Stderr, "envkeep: migrated legacy vault to environment %q\n", e.String())
 		}
 	}
-	cfg, err := config.Load(ctx.CommonDir)
+	cfg, err := config.Load(r.CommonDir)
 	if err != nil {
 		return err
 	}
-	if cfg.DefaultEnv == "" {
-		cfg.DefaultEnv = env
-		if err := config.Save(ctx.CommonDir, cfg); err != nil {
+	if cfg.DefaultEnv.IsUnnamed() {
+		cfg.DefaultEnv = e
+		if err := config.Save(r.CommonDir, cfg); err != nil {
 			return err
 		}
-		ctx.DefaultEnv = env
+		r.DefaultEnv = e
 	}
 	return nil
 }
 
+// readShared reads the worktree's local env and its override, returning the
+// shared set (local minus override keys, D9) and whether the local file exists.
+// It is the read half push/check/status share (pull needs the ordered file, so
+// it reads its own).
+func readShared(localPath, overridePath string) (shared envfile.Env, localExists bool, err error) {
+	override, err := readEnvOrEmpty(overridePath)
+	if err != nil {
+		return nil, false, err
+	}
+	local, exists, err := readEnv(localPath)
+	if err != nil {
+		return nil, false, err
+	}
+	if !exists {
+		local = envfile.Env{}
+	}
+	return local.Without(override), exists, nil
+}
+
 // readEnv reads an env file as a logical set. ok is false (nil error) if absent.
-func readEnv(path string) (env envfile.Env, ok bool, err error) {
+func readEnv(path string) (e envfile.Env, ok bool, err error) {
 	f, ok, err := readFile(path)
 	if err != nil || !ok {
 		return nil, ok, err
@@ -179,14 +234,14 @@ func readEnv(path string) (env envfile.Env, ok bool, err error) {
 
 // readEnvOrEmpty reads an env file, returning an empty set if it is absent.
 func readEnvOrEmpty(path string) (envfile.Env, error) {
-	env, ok, err := readEnv(path)
+	e, ok, err := readEnv(path)
 	if err != nil {
 		return nil, err
 	}
 	if !ok {
 		return envfile.Env{}, nil
 	}
-	return env, nil
+	return e, nil
 }
 
 // readFile reads and parses an env file, preserving layout. ok is false (nil

@@ -22,29 +22,24 @@ func Push(w io.Writer, cwd, envFileFlag, envFlag string, create, dryRun bool) er
 	}
 	p := &printer{w: w}
 
-	localEnv, ok, err := readEnv(ctx.LocalPath)
+	localShared, ok, err := readShared(ctx.self.localPath, ctx.self.overridePath)
 	if err != nil {
 		return err
 	}
 	if !ok {
 		return fmt.Errorf("no %s in this worktree to push", ctx.EnvFile)
 	}
-	overrideEnv, err := readEnvOrEmpty(ctx.OverridePath)
-	if err != nil {
-		return err
-	}
-	localShared := localEnv.Without(overrideEnv)
 
-	marker, hasMarker, err := state.Load(ctx.GitDir)
+	marker, hasMarker, err := state.Load(ctx.self.gitDir)
 	if err != nil {
 		return err
 	}
 	activeEnv := ctx.resolveEnv(marker.Env)
-	if err := ensureTargetEnv(ctx, activeEnv, create, dryRun); err != nil {
+	if err := ctx.ensureTargetEnv(activeEnv, create, dryRun); err != nil {
 		return err
 	}
 
-	vaultEnv, vaultExists, err := readVaultFor(ctx, activeEnv)
+	vaultEnv, vaultExists, err := ctx.readVault(activeEnv)
 	if err != nil {
 		return err
 	}

@@ -10,7 +10,7 @@ import (
 
 func TestMarkerEnvRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	m := Marker{Env: "prod", Base: envfile.Env{"A": "1"}, LocalMTime: 5, VaultMTime: 7}
+	m := Marker{Stat: Stat{Env: "prod", LocalMTime: 5, VaultMTime: 7}, Base: envfile.Env{"A": "1"}}
 	if err := Save(dir, m); err != nil {
 		t.Fatal(err)
 	}
@@ -21,12 +21,12 @@ func TestMarkerEnvRoundTrip(t *testing.T) {
 	if got.Env != "prod" {
 		t.Errorf("Marker.Env = %q, want prod", got.Env)
 	}
-	env, lm, vm, ok, err := LoadStat(dir)
+	s, ok, err := LoadStat(dir)
 	if err != nil || !ok {
 		t.Fatalf("LoadStat = ok:%v err:%v", ok, err)
 	}
-	if env != "prod" || lm != 5 || vm != 7 {
-		t.Errorf("LoadStat = env:%q lm:%d vm:%d, want prod,5,7", env, lm, vm)
+	if s.Env != "prod" || s.LocalMTime != 5 || s.VaultMTime != 7 {
+		t.Errorf("LoadStat = env:%q lm:%d vm:%d, want prod,5,7", s.Env, s.LocalMTime, s.VaultMTime)
 	}
 }
 
@@ -45,9 +45,9 @@ func TestMarkerLegacyNoEnvField(t *testing.T) {
 	if m.Env != "" {
 		t.Errorf("legacy Marker.Env = %q, want empty", m.Env)
 	}
-	env, lm, vm, ok, err := LoadStat(dir)
-	if err != nil || !ok || env != "" || lm != 11 || vm != 22 {
-		t.Errorf("LoadStat legacy = env:%q lm:%d vm:%d ok:%v err:%v", env, lm, vm, ok, err)
+	s, ok, err := LoadStat(dir)
+	if err != nil || !ok || s.Env != "" || s.LocalMTime != 11 || s.VaultMTime != 22 {
+		t.Errorf("LoadStat legacy = env:%q lm:%d vm:%d ok:%v err:%v", s.Env, s.LocalMTime, s.VaultMTime, ok, err)
 	}
 }
 
