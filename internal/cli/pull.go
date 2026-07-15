@@ -73,6 +73,13 @@ func Pull(w io.Writer, cwd, envFileFlag string, dryRun bool) error {
 	target := vaultEnv.Union(overrideEnv) // effective local = vault ⊕ override
 	d := localEnv.Diff(target)
 	if d.Empty() {
+		// Byte-identical yet never synced: no marker means status/check keep
+		// reporting unsynced. Establish the marker so it settles to clean (#17).
+		if !hasMarker {
+			if err := saveMarker(ctx, vaultEnv); err != nil {
+				return err
+			}
+		}
 		p.printf("already in sync; nothing to pull\n")
 		return p.err
 	}

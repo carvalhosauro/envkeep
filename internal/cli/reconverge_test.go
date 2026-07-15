@@ -106,6 +106,58 @@ func TestStatusStaleBaseAgreesShowsClean(t *testing.T) {
 	}
 }
 
+// neverSyncedIdentical drives wt-b into the issue #17 state: the vault holds
+// KEY=v1 and wt-b's local .env is byte-identical, but wt-b has never synced, so
+// it has no marker. Without one, status/check keep reporting unsynced even
+// though the content is fully in sync. Returns the fixture.
+func neverSyncedIdentical(t *testing.T) map[string]string {
+	t.Helper()
+	f := fixture(t)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=v1\n")
+	mustPush(t, f["WT_A"]) // vault = v1
+
+	// wt-b reaches the same value locally without ever syncing → no marker.
+	writeFile(t, filepath.Join(f["WT_B"], ".env"), "KEY=v1\n")
+	if out := checkPorcelain(t, f["WT_B"]); out != "unsynced\n" {
+		t.Fatalf("precondition: porcelain = %q, want %q", out, "unsynced\n")
+	}
+	return f
+}
+
+// TestPullNeverSyncedIdenticalSettlesClean covers issue #17 on pull: an
+// empty-delta "already in sync" pull with no marker must still write one so a
+// byte-identical, never-synced worktree settles to clean.
+func TestPullNeverSyncedIdenticalSettlesClean(t *testing.T) {
+	f := neverSyncedIdentical(t)
+
+	out := mustPull(t, f["WT_B"])
+	if !bytes.Contains([]byte(out), []byte("already in sync")) {
+		t.Errorf("pull = %q, want 'already in sync'", out)
+	}
+	if m := loadMarker(t, f["WT_B"]); m.Base["KEY"] != "v1" {
+		t.Errorf("after pull marker base = %v, want {KEY:v1}", m.Base)
+	}
+	if out := checkPorcelain(t, f["WT_B"]); out != "" {
+		t.Errorf("porcelain after pull = %q, want empty (clean)", out)
+	}
+}
+
+// TestPushNeverSyncedIdenticalSettlesClean is the symmetric #17 fix on push.
+func TestPushNeverSyncedIdenticalSettlesClean(t *testing.T) {
+	f := neverSyncedIdentical(t)
+
+	out := mustPush(t, f["WT_B"])
+	if !bytes.Contains([]byte(out), []byte("already in sync")) {
+		t.Errorf("push = %q, want 'already in sync'", out)
+	}
+	if m := loadMarker(t, f["WT_B"]); m.Base["KEY"] != "v1" {
+		t.Errorf("after push marker base = %v, want {KEY:v1}", m.Base)
+	}
+	if out := checkPorcelain(t, f["WT_B"]); out != "" {
+		t.Errorf("porcelain after push = %q, want empty (clean)", out)
+	}
+}
+
 // TestCheckMtimeBumpNoContentChangeRefreshes covers the #4 acceptance: touching
 // the file without changing its logical content stays clean and refreshes the
 // stored mtime so the fast path works again.

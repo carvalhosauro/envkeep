@@ -70,6 +70,13 @@ func Push(w io.Writer, cwd, envFileFlag string, dryRun bool) error {
 	newVault := vaultEnv.Union(localShared)
 	d := vaultEnv.Diff(newVault)
 	if d.Empty() {
+		// Byte-identical yet never synced: no marker means status/check keep
+		// reporting unsynced. Establish the marker so it settles to clean (#17).
+		if vaultExists && !hasMarker {
+			if err := saveMarker(ctx, newVault); err != nil {
+				return err
+			}
+		}
 		p.printf("already in sync; nothing to push\n")
 		return p.err
 	}
