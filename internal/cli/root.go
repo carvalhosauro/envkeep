@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/carvalhosauro/envkeep/internal/buildinfo"
+	"github.com/carvalhosauro/envkeep/internal/hook"
 )
 
 // Process exit codes: 0 success, 1 error (runtime or usage). The stdlib version
@@ -49,6 +50,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newStatusCmd())
 	root.AddCommand(newPushCmd(), newPullCmd())
 	root.AddCommand(newCheckCmd())
+	root.AddCommand(newHookCmd())
 	return root
 }
 
@@ -144,6 +146,23 @@ func newCheckCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&porcelain, "porcelain", false, "print a bare state token (for scripts/prompts)")
 	return cmd
+}
+
+func newHookCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:       "hook <zsh|bash>",
+		Short:     "print shell integration to source in your rc file",
+		Args:      cobra.ExactArgs(1),
+		ValidArgs: []string{"zsh", "bash"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			snippet, err := hook.Snippet(args[0])
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprint(cmd.OutOrStdout(), snippet)
+			return err
+		},
+	}
 }
 
 // addSyncFlags registers the flags shared by push and pull.

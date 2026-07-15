@@ -140,6 +140,21 @@ func TestRootCheckSilentWhenClean(t *testing.T) {
 	}
 }
 
+// TestRootHookEmitsSnippet verifies the cobra `hook` subcommand still emits the
+// zsh shell-integration snippet and still errors for an unsupported shell.
+func TestRootHookEmitsSnippet(t *testing.T) {
+	out, err := execRoot(t, "hook", "zsh")
+	if err != nil {
+		t.Fatalf("hook zsh: %v", err)
+	}
+	if !strings.Contains(out, "_envkeep_check") {
+		t.Errorf("hook zsh output missing the shell function:\n%s", out)
+	}
+	if _, err := execRoot(t, "hook", "fish"); err == nil {
+		t.Error("hook fish: want error for unsupported shell, got nil")
+	}
+}
+
 // TestProcessCwd asserts processCwd is just os.Getwd, wired for later
 // subcommands (status/push/pull/check) in A2-A5.
 func TestProcessCwd(t *testing.T) {
