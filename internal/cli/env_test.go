@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -103,6 +104,32 @@ func TestRepointGuardsUnpushedEdits(t *testing.T) {
 	err := Pull(&bytes.Buffer{}, f["WT_A"], "", "homo", false, false)
 	if err == nil || !strings.Contains(err.Error(), "not pushed") {
 		t.Errorf("switch with unpushed edits: err = %v, want a refusal (E4)", err)
+	}
+}
+
+// TestRepointRefusalMessageUnchangedAndClassifiable proves wrapping the E4
+// re-point guard with the ErrRefused sentinel (added for cascade, D28/C1) does
+// not change what a direct `envkeep use`/`envkeep pull` caller sees: the exact
+// refusal message is preserved, while errors.Is(err, ErrRefused) now lets
+// cascade classify it as a skip instead of clobbering the worktree.
+func TestRepointRefusalMessageUnchangedAndClassifiable(t *testing.T) {
+	f := fixture(t)
+
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "DB=prod\n")
+	pushEnv(t, f["WT_A"], "prod", true)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "DB=homo\n")
+	pushEnv(t, f["WT_A"], "homo", true)
+
+	mustCmdEnv(t, f["WT_A"], "prod")
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "DB=prod-EDITED\n")
+
+	err := Pull(&bytes.Buffer{}, f["WT_A"], "", "homo", false, false)
+	const want = `local has changes not pushed to environment "prod"; push or discard before switching to "homo"`
+	if err == nil || err.Error() != want {
+		t.Fatalf("Pull error = %v, want byte-identical %q", err, want)
+	}
+	if !errors.Is(err, ErrRefused) {
+		t.Errorf("errors.Is(err, ErrRefused) = false, want true")
 	}
 }
 

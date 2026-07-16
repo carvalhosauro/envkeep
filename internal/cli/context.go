@@ -31,6 +31,7 @@ type Repo struct {
 	EnvFile    string
 	EnvFlag    env.Name // raw --env value (Unnamed if unset)
 	DefaultEnv env.Name // config default_env (Unnamed if unset / legacy)
+	Cascade    bool     // config cascade default for `use` fan-out (D28)
 }
 
 // worktreePaths bundles the paths a single worktree's drift assessment needs:
@@ -74,6 +75,7 @@ func Resolve(cwd, envFileFlag, envFlag string) (*Context, error) {
 		EnvFile:    envFile,
 		EnvFlag:    env.Name(envFlag),
 		DefaultEnv: cfg.DefaultEnv,
+		Cascade:    cfg.Cascade,
 	}
 	// The invoking worktree's gitdir came from Locate, so build self directly
 	// (no extra git call — check stays cheap, D7).

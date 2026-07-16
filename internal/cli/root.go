@@ -209,10 +209,10 @@ func newEnvsCmd() *cobra.Command {
 }
 
 func newUseCmd() *cobra.Command {
-	var create bool
+	var create, cascade, dry bool
 	cmd := &cobra.Command{
 		Use:   "use <env>",
-		Short: "switch the current worktree to an environment (-c creates it)",
+		Short: "switch to an environment (-c creates it; --cascade fans out to every worktree, D28)",
 		Args:  cobra.ExactArgs(1),
 		ValidArgsFunction: func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 			return completeEnvNames("")
@@ -222,12 +222,25 @@ func newUseCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			doCascade := cascade
+			if !cmd.Flags().Changed("cascade") {
+				// Honor the repo's `cascade=true` config default (D28) when the
+				// flag was not explicitly set on the command line.
+				if ctx, rerr := Resolve(cwd, "", ""); rerr == nil {
+					doCascade = ctx.Cascade
+				}
+			}
+			if doCascade {
+				return UseCascade(cmd.OutOrStdout(), cwd, args[0], dry)
+			}
 			// use == re-point the current worktree to args[0]; Pull already does the
 			// re-point (D31), guards unpushed edits (E4), and creates with -c (D26).
-			return Pull(cmd.OutOrStdout(), cwd, "", args[0], create, false)
+			return Pull(cmd.OutOrStdout(), cwd, "", args[0], create, dry)
 		},
 	}
 	cmd.Flags().BoolVarP(&create, "create", "c", false, "create the environment if it does not exist")
+	cmd.Flags().BoolVar(&cascade, "cascade", false, "switch every worktree in the repo, not just this one (D28)")
+	cmd.Flags().BoolVar(&dry, "dry-run", false, "show what would change without writing")
 	return cmd
 }
 

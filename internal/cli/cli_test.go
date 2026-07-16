@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -164,5 +165,51 @@ func TestPullRefusesWhenLocalAhead(t *testing.T) {
 	err := Pull(&bytes.Buffer{}, f["WT_A"], "", "", false, false)
 	if err == nil || !strings.Contains(err.Error(), "push") {
 		t.Errorf("Pull error = %v, want a refusal telling to push first", err)
+	}
+}
+
+// TestPullAheadRefusalMessageUnchangedAndClassifiable proves the ErrRefused
+// sentinel (added for cascade, D28/C1) is purely additive: a direct
+// `envkeep pull` caller still sees the exact refusal message Pull has always
+// produced (message preservation, Deliverable A guarantee), while
+// errors.Is(err, ErrRefused) now lets cascade classify it as a skip rather
+// than string-matching.
+func TestPullAheadRefusalMessageUnchangedAndClassifiable(t *testing.T) {
+	f := fixture(t)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=v1\n")
+	mustPush(t, f["WT_A"])
+
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=v2\n")
+	err := Pull(&bytes.Buffer{}, f["WT_A"], "", "", false, false)
+
+	const want = "local has changes not in the vault; run 'envkeep push' first"
+	if err == nil || err.Error() != want {
+		t.Fatalf("Pull error = %v, want byte-identical %q", err, want)
+	}
+	if !errors.Is(err, ErrRefused) {
+		t.Errorf("errors.Is(err, ErrRefused) = false, want true")
+	}
+}
+
+// TestPullConflictRefusalMessageUnchangedAndClassifiable is the conflict-guard
+// counterpart of TestPullAheadRefusalMessageUnchangedAndClassifiable.
+func TestPullConflictRefusalMessageUnchangedAndClassifiable(t *testing.T) {
+	f := fixture(t)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=v1\n")
+	mustPush(t, f["WT_A"])
+	mustPull(t, f["WT_B"]) // wt-b now synced at KEY=v1
+
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=v2\n")
+	mustPush(t, f["WT_A"]) // vault -> v2
+
+	writeFile(t, filepath.Join(f["WT_B"], ".env"), "KEY=v3\n") // wt-b diverges too
+	err := Pull(&bytes.Buffer{}, f["WT_B"], "", "", false, false)
+
+	const want = "conflict: vault and local changed the same key(s); resolve, then pull"
+	if err == nil || err.Error() != want {
+		t.Fatalf("Pull error = %v, want byte-identical %q", err, want)
+	}
+	if !errors.Is(err, ErrRefused) {
+		t.Errorf("errors.Is(err, ErrRefused) = false, want true")
 	}
 }

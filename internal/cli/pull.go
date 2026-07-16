@@ -11,6 +11,25 @@ import (
 	"github.com/carvalhosauro/envkeep/internal/state"
 )
 
+// ErrRefused marks a Pull guard's refusal — ahead, conflict, or a re-point
+// blocked by unpushed edits (E4) — rather than a genuine I/O or resolve error.
+// Cascade (UseCascade, D28) uses errors.Is(err, ErrRefused) to downgrade a
+// refusal into a per-worktree skip instead of aborting the whole fan-out.
+var ErrRefused = errors.New("refused")
+
+// refusal wraps a refusal error so it satisfies errors.Is(err, ErrRefused)
+// while its Error() text stays byte-identical to the wrapped message — Pull
+// already shipped with these exact strings (Deliverable A), and a direct
+// `envkeep pull` caller must see them unchanged.
+type refusal struct{ err error }
+
+func (r refusal) Error() string        { return r.err.Error() }
+func (r refusal) Unwrap() error        { return r.err }
+func (r refusal) Is(target error) bool { return target == ErrRefused }
+
+// refused wraps err as a classifiable refusal (see refusal).
+func refused(err error) error { return refusal{err} }
+
 // Pull writes the active environment's vault into the current worktree's local
 // env, composed with the per-worktree override (override wins, D9), preserving
 // the local file's key order and comments (D11). The environment is resolved by
@@ -70,20 +89,20 @@ func Pull(w io.Writer, cwd, envFileFlag, envFlag string, create, dryRun bool) er
 			p.printf("already in sync; nothing to pull\n")
 			return p.err
 		case envfile.Ahead:
-			return errors.New("local has changes not in the vault; run 'envkeep push' first")
+			return refused(errors.New("local has changes not in the vault; run 'envkeep push' first"))
 		case envfile.Conflict:
 			printConflicts(p, conflicts)
 			if p.err != nil {
 				return p.err
 			}
-			return errors.New("conflict: vault and local changed the same key(s); resolve, then pull")
+			return refused(errors.New("conflict: vault and local changed the same key(s); resolve, then pull"))
 		}
 		// Behind or Diverged: safe to apply.
 	case hasMarker:
 		// Re-point to a different environment (marker.Env != activeEnv). Guard the
 		// current env's unpushed local edits (E4) — never discard them silently.
 		if !marker.Base.Equal(localShared) {
-			return fmt.Errorf("local has changes not pushed to environment %q; push or discard before switching to %q", marker.Env, activeEnv)
+			return refused(fmt.Errorf("local has changes not pushed to environment %q; push or discard before switching to %q", marker.Env, activeEnv))
 		}
 		// Local matches the current env's base → safe to re-point.
 	}
