@@ -581,3 +581,31 @@ and non-destructive; the repo-wide sweep stays an explicit, opt-in `cascade`.
 state); a top-level `set` verb (overloads `config set`, D29).
 **Reconsider-trigger:** None foreseen.
 **Status:** ACCEPTED (design 004 — pending implementation).
+
+## D32 — `status --all-envs` (worktree × environment matrix) is deferred, not built
+
+**Decision:** `status` stays **active-env-only** — it reports each worktree's
+current environment and its sync state against that environment's vault. The
+full worktree × environment **matrix** (`status --all-envs`) is **not built**
+now. Of the three options weighed — (a) a limited `clean`/`differs` view per
+env with no 3-way base, (b) extending the marker to store a base per synced env
+(full 3-way per cell, but a marker schema change + migration + larger markers),
+(c) defer — we take **(c)**.
+**Why:** A truthful per-cell state (`ahead`/`behind`/`conflict`) needs a 3-way
+base for every (worktree, env) pair, but the marker stores a base only for the
+worktree's **active** env (D5). Option (b) pays for a schema change and a
+migration to serve a feature no one has asked for — speculative growth the
+project explicitly refuses ("build ahead of a trigger is over-engineering",
+ROADMAP). Option (a) is cheap but ships a deliberately coarse, easily-misread
+state and still adds surface to maintain. Deferring keeps `status` honest and
+the marker simple; the capability is one focused follow-up plan away if a real
+need appears.
+**Rejected:** (a) coarse clean/differs view — honest-but-misleading, still
+carries maintenance cost for a speculative need; (b) per-env bases in the marker
+— a schema/migration cost with no concrete demand today.
+**Reconsider-trigger:** Someone actually needs to see, in one place, every
+worktree's state across **all** environments (e.g. auditing drift before a
+release across many envs) → then spin a follow-up plan choosing (a) or (b) with
+full TDD; (b) if per-cell `ahead`/`behind`/`conflict` precision is required, (a)
+if a coarse clean/differs view suffices.
+**Status:** ACCEPTED — deferred (design 004 §4; ROADMAP 2d).

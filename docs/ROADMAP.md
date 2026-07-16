@@ -76,9 +76,14 @@ resolved decisions in [`designs/003-named-environments.md`](designs/003-named-en
      current worktree, D31) / `envs` (list) / `rm <env>` (guarded, E5), and the
      one `envkeep config <get|set|list|unset>` group. `set` is reserved for
      `config set`.
-3. **Deferred (2d):** `use` cascade fan-out (D28 — repo-wide, `--dry-run`,
-   skip-not-clobber); `status --all-envs` (the full worktree × environment
-   matrix — needs a per-env base the marker does not store today).
+3. **2c — `use` cascade fan-out (D28).** ✅ **DONE (2026-07-16).** Repo-wide
+   switch (`use <env> --cascade`, or config `cascade=true`); `--dry-run`;
+   `ahead`/`conflict`/`diverged` worktrees skipped-and-reported, never
+   clobbered (reuses Pull's guards via the `ErrRefused` sentinel).
+4. **Deferred (out of scope, gated) — `status --all-envs`** (the full worktree ×
+   environment matrix). Needs a per-env base the marker does not store today;
+   **not built** — see **D32** for the deferral decision and its
+   reconsider-trigger.
 
 **Trigger-gated within this feature:** the `shared` layer (Model B) — added only
 if re-declaring common keys across envs becomes real pain (D24 trigger). The
