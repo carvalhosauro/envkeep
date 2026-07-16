@@ -37,6 +37,22 @@ func Envs(w io.Writer, cwd string) error {
 	return p.err
 }
 
+// Use switches the current worktree to envName. Switching to an existing env
+// pulls its content. With create, a NON-EXISTENT env is created from the current
+// worktree's env — like `git checkout -b`: the new vault is snapshotted from local
+// content and the worktree re-points to it, leaving local intact (push-create path,
+// D26). An existing env with -c just switches.
+func Use(w io.Writer, cwd, envName string, create, dryRun bool) error {
+	ctx, err := Resolve(cwd, "", envName)
+	if err != nil {
+		return err
+	}
+	if create && !vault.EnvExists(ctx.CommonDir, env.Name(envName)) {
+		return Push(w, cwd, "", envName, true, dryRun) // checkout -b: create from current
+	}
+	return Pull(w, cwd, "", envName, create, dryRun) // switch to existing
+}
+
 // UseCascade switches every worktree in the repo to envName — the opt-in
 // cascade fan-out (D28) — reusing Pull's guards per worktree instead of
 // re-implementing conflict/ahead detection. A worktree whose current

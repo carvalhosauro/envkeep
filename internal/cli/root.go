@@ -234,9 +234,12 @@ func newUseCmd() *cobra.Command {
 			if doCascade {
 				return UseCascade(cmd.OutOrStdout(), cwd, args[0], dry)
 			}
-			// use == re-point the current worktree to args[0]; Pull already does the
-			// re-point (D31), guards unpushed edits (E4), and creates with -c (D26).
-			return Pull(cmd.OutOrStdout(), cwd, "", args[0], create, dry)
+			// use == re-point the current worktree to args[0]. Use dispatches to
+			// Pull for an existing env (re-point + guard unpushed edits, E4) or,
+			// with -c on a non-existent env, to the push-create path — a
+			// `git checkout -b`: snapshot local into the new env's vault and
+			// re-point, leaving local intact (D26, FU1).
+			return Use(cmd.OutOrStdout(), cwd, args[0], create, dry)
 		},
 	}
 	cmd.Flags().BoolVarP(&create, "create", "c", false, "create the environment if it does not exist")

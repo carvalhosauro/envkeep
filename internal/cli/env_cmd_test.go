@@ -76,6 +76,110 @@ func TestUseUnknownEnvRefused(t *testing.T) {
 	}
 }
 
+// TestUseCreateNewEnvSnapshotsFromCurrent verifies `use -c <new>` behaves like
+// `git checkout -b`: it creates the new environment by snapshotting the
+// CURRENT worktree's local .env into the new env's vault and re-points the
+// worktree there, leaving local untouched — rather than emptying local and
+// re-pointing to a phantom vault-less environment (the FU1 bug).
+func TestUseCreateNewEnvSnapshotsFromCurrent(t *testing.T) {
+	f := fixture(t)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "DB=prod-db\n")
+	t.Chdir(f["WT_A"])
+	pushEnv(t, f["WT_A"], "prod", true)
+
+	// Local diverges from prod's vault before the checkout-b, so a snapshot of
+	// "current local" is provably distinct from a reset to prod's content.
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "A=1\nB=2\n")
+
+	if _, err := execRoot(t, "use", "-c", "staging"); err != nil {
+		t.Fatalf("use -c staging: %v", err)
+	}
+
+	staging := readEnvVault(t, f["COMMON_DIR"], "staging")
+	if staging["A"] != "1" || staging["B"] != "2" {
+		t.Errorf("staging vault = %v, want a snapshot of current local (A=1, B=2)", staging)
+	}
+
+	got, err := os.ReadFile(filepath.Join(f["WT_A"], ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "A=1") || !strings.Contains(string(got), "B=2") {
+		t.Errorf("local .env must stay intact after use -c, got:\n%s", got)
+	}
+
+	envsOut, err := execRoot(t, "envs")
+	if err != nil {
+		t.Fatalf("envs: %v", err)
+	}
+	if !strings.Contains(envsOut, "staging") {
+		t.Errorf("envs should list staging:\n%s", envsOut)
+	}
+
+	statusOut, err := execRoot(t, "status")
+	if err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if !strings.Contains(statusOut, "staging") {
+		t.Errorf("status should show the worktree re-pointed to staging:\n%s", statusOut)
+	}
+}
+
+// TestUseCreateDoesNotEmptyLocal is a minimal explicit guard for the FU1
+// regression: after `use -c <new>` the local .env must be non-empty and equal
+// to what it was right before the command ran.
+func TestUseCreateDoesNotEmptyLocal(t *testing.T) {
+	f := fixture(t)
+	t.Chdir(f["WT_A"])
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "X=9\nY=8\n")
+
+	before, err := os.ReadFile(filepath.Join(f["WT_A"], ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := execRoot(t, "use", "-c", "newenv"); err != nil {
+		t.Fatalf("use -c newenv: %v", err)
+	}
+
+	after, err := os.ReadFile(filepath.Join(f["WT_A"], ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) == 0 {
+		t.Fatal("use -c emptied the local .env — FU1 regression")
+	}
+	if string(after) != string(before) {
+		t.Errorf("local .env changed after use -c newenv:\nbefore: %q\nafter:  %q", before, after)
+	}
+}
+
+// TestUseExistingSwitches verifies `use <existing>` (no -c) still pulls the
+// existing environment's content into local — the checkout (not checkout -b)
+// path is unchanged.
+func TestUseExistingSwitches(t *testing.T) {
+	f := fixture(t)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "V=X\n")
+	t.Chdir(f["WT_A"])
+	pushEnv(t, f["WT_A"], "prod", true)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "V=Y\n")
+	pushEnv(t, f["WT_A"], "homo", true) // now on homo, local V=Y
+
+	if _, err := execRoot(t, "use", "prod"); err != nil {
+		t.Fatalf("use prod: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(f["WT_A"], ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "V=X") {
+		t.Errorf("use prod should pull prod's content (V=X) into local, got:\n%s", got)
+	}
+	if strings.Contains(string(got), "V=Y") {
+		t.Errorf("local still holds homo's value after switching to prod:\n%s", got)
+	}
+}
+
 // TestRmRefusesWhenWorktreeOnIt verifies `rm <env>` refuses to delete an
 // environment while any worktree's active env still points at it, unless
 // --force is passed (E5).
