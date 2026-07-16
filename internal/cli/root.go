@@ -53,6 +53,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newCheckCmd())
 	root.AddCommand(newHookCmd())
 	root.AddCommand(newEnvsCmd())
+	root.AddCommand(newUseCmd())
 	return root
 }
 
@@ -204,6 +205,29 @@ func newEnvsCmd() *cobra.Command {
 			return Envs(cmd.OutOrStdout(), cwd)
 		},
 	}
+}
+
+func newUseCmd() *cobra.Command {
+	var create bool
+	cmd := &cobra.Command{
+		Use:   "use <env>",
+		Short: "switch the current worktree to an environment (-c creates it)",
+		Args:  cobra.ExactArgs(1),
+		ValidArgsFunction: func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+			return completeEnvNames("")
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cwd, err := processCwd()
+			if err != nil {
+				return err
+			}
+			// use == re-point the current worktree to args[0]; Pull already does the
+			// re-point (D31), guards unpushed edits (E4), and creates with -c (D26).
+			return Pull(cmd.OutOrStdout(), cwd, "", args[0], create, false)
+		},
+	}
+	cmd.Flags().BoolVarP(&create, "create", "c", false, "create the environment if it does not exist")
+	return cmd
 }
 
 // addSyncFlags registers the flags shared by push and pull.

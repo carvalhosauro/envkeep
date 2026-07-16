@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -38,5 +39,34 @@ func TestEnvsEmptyRepoHintsCreate(t *testing.T) {
 	}
 	if !strings.Contains(out, "no environments yet") {
 		t.Errorf("envs on empty repo should hint at creation:\n%s", out)
+	}
+}
+
+// TestUseRepointsCurrentWorktree verifies `use <env>` re-points the current
+// worktree to that environment (Pull already does the re-point, D31).
+func TestUseRepointsCurrentWorktree(t *testing.T) {
+	f := fixture(t)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "DB=prod\n")
+	t.Chdir(f["WT_A"])
+	pushEnv(t, f["WT_A"], "prod", true)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "DB=homo\n")
+	pushEnv(t, f["WT_A"], "homo", true) // now on homo
+	if _, err := execRoot(t, "use", "prod"); err != nil {
+		t.Fatalf("use prod: %v", err)
+	}
+	got, _ := os.ReadFile(filepath.Join(f["WT_A"], ".env"))
+	if !strings.Contains(string(got), "DB=prod") {
+		t.Errorf("use did not re-point to prod:\n%s", got)
+	}
+}
+
+// TestUseUnknownEnvRefused verifies `use` refuses to switch to an environment
+// that does not exist (unless -c/--create is passed).
+func TestUseUnknownEnvRefused(t *testing.T) {
+	f := fixture(t)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "K=1\n")
+	t.Chdir(f["WT_A"])
+	if _, err := execRoot(t, "use", "ghost"); err == nil {
+		t.Error("use ghost: want error, got nil")
 	}
 }
