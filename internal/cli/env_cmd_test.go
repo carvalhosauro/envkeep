@@ -221,6 +221,62 @@ func TestUseHonorsConfigCascadeDefault(t *testing.T) {
 // (envkeep.base) so its next Pull fails inside state.Load's JSON decode —
 // a real I/O/parse failure, never one of Pull's guard refusals — rather than
 // faking the abort.
+// TestConfigSetGet verifies `config set` persists a value that `config get`
+// then reads back.
+func TestConfigSetGet(t *testing.T) {
+	f := fixture(t)
+	t.Chdir(f["WT_A"])
+	if _, err := execRoot(t, "config", "set", "default_env", "prod"); err != nil {
+		t.Fatalf("config set: %v", err)
+	}
+	out, err := execRoot(t, "config", "get", "default_env")
+	if err != nil {
+		t.Fatalf("config get: %v", err)
+	}
+	if strings.TrimSpace(out) != "prod" {
+		t.Errorf("config get default_env = %q, want prod", out)
+	}
+}
+
+// TestConfigListUnset verifies `config list` prints every key=value pair and
+// `config unset` clears a key back to its default (visible in a later list).
+func TestConfigListUnset(t *testing.T) {
+	f := fixture(t)
+	t.Chdir(f["WT_A"])
+	if _, err := execRoot(t, "config", "set", "cascade", "true"); err != nil {
+		t.Fatalf("config set cascade: %v", err)
+	}
+	out, err := execRoot(t, "config", "list")
+	if err != nil {
+		t.Fatalf("config list: %v", err)
+	}
+	for _, want := range []string{"env_file=", "default_env=", "cascade=true"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("config list missing %q:\n%s", want, out)
+		}
+	}
+	if _, err := execRoot(t, "config", "unset", "cascade"); err != nil {
+		t.Fatalf("config unset cascade: %v", err)
+	}
+	out, err = execRoot(t, "config", "list")
+	if err != nil {
+		t.Fatalf("config list: %v", err)
+	}
+	if !strings.Contains(out, "cascade=false") {
+		t.Errorf("config list after unset should show cascade=false:\n%s", out)
+	}
+}
+
+// TestConfigGetUnknownKeyErrors verifies the config subcommands surface
+// config.Get/Set/Unset's unknown-key errors rather than swallowing them.
+func TestConfigGetUnknownKeyErrors(t *testing.T) {
+	f := fixture(t)
+	t.Chdir(f["WT_A"])
+	if _, err := execRoot(t, "config", "get", "bogus"); err == nil {
+		t.Error("config get bogus: want error for unknown key")
+	}
+}
+
 func TestUseCascadeAbortReportsPartialProgressAndFailingWorktree(t *testing.T) {
 	f := fixture(t)
 	writeFile(t, filepath.Join(f["WT_A"], ".env"), "DB=prod\n")

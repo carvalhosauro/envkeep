@@ -76,6 +76,76 @@ func Load(commonDir string) (Config, error) {
 	return cfg, nil
 }
 
+// Keys returns the configurable keys, in display order.
+func Keys() []string { return []string{keyEnvFile, keyDefaultEnv, keyCascade} }
+
+// Get returns the string value of a config key. ok is false if the key is unset.
+func Get(commonDir, key string) (string, bool, error) {
+	cfg, err := Load(commonDir)
+	if err != nil {
+		return "", false, err
+	}
+	switch key {
+	case keyEnvFile:
+		return cfg.EnvFile, cfg.EnvFile != "", nil
+	case keyDefaultEnv:
+		return cfg.DefaultEnv.String(), !cfg.DefaultEnv.IsUnnamed(), nil
+	case keyCascade:
+		if !cfg.Cascade {
+			return "false", false, nil
+		}
+		return "true", true, nil
+	default:
+		return "", false, fmt.Errorf("config: unknown key %q", key)
+	}
+}
+
+// Set assigns a config key and persists it.
+func Set(commonDir, key, val string) error {
+	cfg, err := Load(commonDir)
+	if err != nil {
+		return err
+	}
+	switch key {
+	case keyEnvFile:
+		cfg.EnvFile = val
+	case keyDefaultEnv:
+		cfg.DefaultEnv = env.Name(val)
+	case keyCascade:
+		b, perr := strconv.ParseBool(val)
+		if perr != nil {
+			return fmt.Errorf("config: %q must be a boolean: %w", keyCascade, perr)
+		}
+		cfg.Cascade = b
+	default:
+		return fmt.Errorf("config: unknown key %q", key)
+	}
+	return Save(commonDir, cfg)
+}
+
+// Unset clears a config key back to its default.
+func Unset(commonDir, key string) error {
+	switch key {
+	case keyEnvFile, keyDefaultEnv, keyCascade:
+		return Set(commonDir, key, defaultFor(key))
+	default:
+		return fmt.Errorf("config: unknown key %q", key)
+	}
+}
+
+func defaultFor(key string) string {
+	switch key {
+	case keyEnvFile:
+		return DefaultEnvFile
+	case keyCascade:
+		// Set's cascade branch requires a parseable bool, so the default must
+		// be "false" rather than "" (which strconv.ParseBool rejects).
+		return "false"
+	default:
+		return "" // default_env -> unnamed
+	}
+}
+
 // Save writes the repo config. Only keys with a non-default value are written,
 // so a repo that never adopts environments keeps a config identical to the
 // pre-environments form (just env_file) — the R3 back-compat guarantee (D27).
