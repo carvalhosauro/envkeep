@@ -54,6 +54,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newHookCmd())
 	root.AddCommand(newEnvsCmd())
 	root.AddCommand(newUseCmd())
+	root.AddCommand(newRmCmd())
 	return root
 }
 
@@ -227,6 +228,27 @@ func newUseCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVarP(&create, "create", "c", false, "create the environment if it does not exist")
+	return cmd
+}
+
+func newRmCmd() *cobra.Command {
+	var force bool
+	cmd := &cobra.Command{
+		Use:   "rm <env>",
+		Short: "delete an environment (refuses if a worktree is on it, unless --force)",
+		Args:  cobra.ExactArgs(1),
+		ValidArgsFunction: func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+			return completeEnvNames("")
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cwd, err := processCwd()
+			if err != nil {
+				return err
+			}
+			return RmEnv(cmd.OutOrStdout(), cwd, args[0], force)
+		},
+	}
+	cmd.Flags().BoolVar(&force, "force", false, "delete even if a worktree's active env still points at it")
 	return cmd
 }
 

@@ -94,6 +94,19 @@ func EnvExists(commonDir string, e env.Name) bool {
 	return err == nil && fi.IsDir()
 }
 
+// RemoveEnv deletes a named environment's vault directory. The unnamed (legacy)
+// environment cannot be removed.
+func RemoveEnv(commonDir string, e env.Name) error {
+	if e.IsUnnamed() {
+		return errors.New("vault: cannot remove the unnamed environment")
+	}
+	dir := filepath.Join(vaultDir(commonDir), e.String())
+	if err := os.RemoveAll(dir); err != nil {
+		return fmt.Errorf("vault: remove environment %q: %w", e.String(), err)
+	}
+	return nil
+}
+
 // MigrateLegacy moves the legacy flat vault into the environment to, if a flat
 // vault exists (the opt-in migration on first env creation, D27). It reports
 // whether a file was moved. vault owns the on-disk layout, so the rename lives

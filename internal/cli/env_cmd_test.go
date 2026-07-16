@@ -70,3 +70,31 @@ func TestUseUnknownEnvRefused(t *testing.T) {
 		t.Error("use ghost: want error, got nil")
 	}
 }
+
+// TestRmRefusesWhenWorktreeOnIt verifies `rm <env>` refuses to delete an
+// environment while any worktree's active env still points at it, unless
+// --force is passed (E5).
+func TestRmRefusesWhenWorktreeOnIt(t *testing.T) {
+	f := fixture(t)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "K=1\n")
+	t.Chdir(f["WT_A"])
+	pushEnv(t, f["WT_A"], "prod", true) // wt-a active on prod
+	if _, err := execRoot(t, "rm", "prod"); err == nil {
+		t.Error("rm prod: want refusal (a worktree is on it), got nil")
+	}
+	// --force deletes anyway
+	if _, err := execRoot(t, "rm", "prod", "--force"); err != nil {
+		t.Fatalf("rm prod --force: %v", err)
+	}
+}
+
+// TestRmUnknownEnvRefused verifies `rm` refuses to delete an environment that
+// does not exist.
+func TestRmUnknownEnvRefused(t *testing.T) {
+	f := fixture(t)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "K=1\n")
+	t.Chdir(f["WT_A"])
+	if _, err := execRoot(t, "rm", "ghost"); err == nil || !strings.Contains(err.Error(), "unknown environment") {
+		t.Errorf("rm ghost: err = %v, want an 'unknown environment' refusal", err)
+	}
+}

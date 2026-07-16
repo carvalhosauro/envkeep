@@ -67,6 +67,20 @@ func TestEnvironmentsAndExists(t *testing.T) {
 	}
 }
 
+func TestRemoveEnv(t *testing.T) {
+	common := t.TempDir()
+	writeVaultFile(t, PathForEnv(common, "prod", ".env"))
+	if err := RemoveEnv(common, "prod"); err != nil {
+		t.Fatalf("RemoveEnv: %v", err)
+	}
+	if EnvExists(common, "prod") {
+		t.Error("prod should not exist after RemoveEnv")
+	}
+	if err := RemoveEnv(common, env.Unnamed); err == nil {
+		t.Error("RemoveEnv(Unnamed): want error (cannot remove the legacy env)")
+	}
+}
+
 func TestMigrateLegacy(t *testing.T) {
 	common := t.TempDir()
 
