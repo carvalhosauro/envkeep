@@ -42,6 +42,13 @@ func Pull(w io.Writer, cwd, envFileFlag, envFlag string, create, dryRun bool) er
 	if err != nil {
 		return err
 	}
+	return pullResolved(w, ctx, create, dryRun)
+}
+
+// pullResolved is Pull's body over an already-resolved Context, letting a
+// caller that already resolved the repo (Use) skip a second git rev-parse +
+// config.Load (D25's resolution is otherwise paid twice per `use`).
+func pullResolved(w io.Writer, ctx *Context, create, dryRun bool) error {
 	p := &printer{w: w}
 
 	marker, hasMarker, err := state.Load(ctx.self.gitDir)

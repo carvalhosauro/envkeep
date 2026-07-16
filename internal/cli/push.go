@@ -20,6 +20,13 @@ func Push(w io.Writer, cwd, envFileFlag, envFlag string, create, dryRun bool) er
 	if err != nil {
 		return err
 	}
+	return pushResolved(w, ctx, create, dryRun)
+}
+
+// pushResolved is Push's body over an already-resolved Context, letting a
+// caller that already resolved the repo (Use) skip a second git rev-parse +
+// config.Load (D25's resolution is otherwise paid twice per `use`).
+func pushResolved(w io.Writer, ctx *Context, create, dryRun bool) error {
 	p := &printer{w: w}
 
 	localShared, ok, err := readShared(ctx.self.localPath, ctx.self.overridePath)

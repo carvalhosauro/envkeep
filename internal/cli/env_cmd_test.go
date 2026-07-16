@@ -8,8 +8,10 @@ import (
 	"testing"
 
 	"github.com/carvalhosauro/envkeep/internal/config"
+	"github.com/carvalhosauro/envkeep/internal/env"
 	"github.com/carvalhosauro/envkeep/internal/git"
 	"github.com/carvalhosauro/envkeep/internal/state"
+	"github.com/carvalhosauro/envkeep/internal/vault"
 )
 
 // TestEnvsLists verifies `envs` lists every environment and marks the repo's
@@ -151,6 +153,91 @@ func TestUseCreateDoesNotEmptyLocal(t *testing.T) {
 	}
 	if string(after) != string(before) {
 		t.Errorf("local .env changed after use -c newenv:\nbefore: %q\nafter:  %q", before, after)
+	}
+}
+
+// TestUseCreateExistingEnvSwitches verifies `use -c <existing>` on an env that
+// already exists just switches to it (pulls its content) rather than treating
+// -c as re-creating/overwriting the target's vault from current local — -c
+// only takes the checkout-b (snapshot-from-current) path when the target does
+// not exist yet (D26).
+func TestUseCreateExistingEnvSwitches(t *testing.T) {
+	f := fixture(t)
+	t.Chdir(f["WT_A"])
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "DB=prod-db\n")
+	pushEnv(t, f["WT_A"], "prod", true)
+
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "DB=homo-db\n")
+	pushEnv(t, f["WT_A"], "homo", true) // now on homo, local DB=homo-db
+
+	if _, err := execRoot(t, "use", "-c", "prod"); err != nil {
+		t.Fatalf("use -c prod: %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(f["WT_A"], ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "DB=prod-db") {
+		t.Errorf("use -c on an existing env should pull its content, got:\n%s", got)
+	}
+	if strings.Contains(string(got), "DB=homo-db") {
+		t.Errorf("local still holds homo's value after use -c prod:\n%s", got)
+	}
+
+	prod := readEnvVault(t, f["COMMON_DIR"], "prod")
+	if prod["DB"] != "prod-db" {
+		t.Errorf("use -c prod altered prod's vault: %v, want it unchanged (DB=prod-db)", prod)
+	}
+}
+
+// TestUseCreateDryRunPreviewsNoCreate verifies `use -c <new> --dry-run`
+// mutates nothing: the new environment is not created, local stays untouched,
+// and the worktree marker is not re-pointed to it.
+func TestUseCreateDryRunPreviewsNoCreate(t *testing.T) {
+	f := fixture(t)
+	t.Chdir(f["WT_A"])
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "DB=prod-db\n")
+	pushEnv(t, f["WT_A"], "prod", true) // wt-a active on prod
+
+	before, err := os.ReadFile(filepath.Join(f["WT_A"], ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := execRoot(t, "use", "-c", "staging", "--dry-run"); err != nil {
+		t.Fatalf("use -c staging --dry-run: %v", err)
+	}
+
+	after, err := os.ReadFile(filepath.Join(f["WT_A"], ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Errorf("dry-run mutated local .env:\nbefore: %q\nafter:  %q", before, after)
+	}
+
+	if vault.EnvExists(f["COMMON_DIR"], env.Name("staging")) {
+		t.Error("dry-run should not have created staging")
+	}
+
+	envsOut, err := execRoot(t, "envs")
+	if err != nil {
+		t.Fatalf("envs: %v", err)
+	}
+	if strings.Contains(envsOut, "staging") {
+		t.Errorf("envs should not list staging after a dry run:\n%s", envsOut)
+	}
+
+	statusOut, err := execRoot(t, "status")
+	if err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if !strings.Contains(statusOut, "prod") {
+		t.Errorf("status should still show the worktree on prod:\n%s", statusOut)
+	}
+	if strings.Contains(statusOut, "staging") {
+		t.Errorf("dry-run should not re-point the marker to staging:\n%s", statusOut)
 	}
 }
 

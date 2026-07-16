@@ -48,9 +48,9 @@ func Use(w io.Writer, cwd, envName string, create, dryRun bool) error {
 		return err
 	}
 	if create && !vault.EnvExists(ctx.CommonDir, env.Name(envName)) {
-		return Push(w, cwd, "", envName, true, dryRun) // checkout -b: create from current
+		return pushResolved(w, ctx, true, dryRun) // checkout -b: create from current
 	}
-	return Pull(w, cwd, "", envName, create, dryRun) // switch to existing
+	return pullResolved(w, ctx, create, dryRun) // switch to existing
 }
 
 // UseCascade switches every worktree in the repo to envName — the opt-in
