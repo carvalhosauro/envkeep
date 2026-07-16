@@ -1,12 +1,15 @@
 package cli
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/carvalhosauro/envkeep/internal/config"
+	"github.com/carvalhosauro/envkeep/internal/git"
+	"github.com/carvalhosauro/envkeep/internal/state"
 )
 
 // TestEnvsLists verifies `envs` lists every environment and marks the repo's
@@ -204,5 +207,42 @@ func TestUseHonorsConfigCascadeDefault(t *testing.T) {
 	got, _ := os.ReadFile(filepath.Join(f["WT_B"], ".env"))
 	if !strings.Contains(string(got), "DB=prod") {
 		t.Errorf("use should have cascaded via the config default:\n%s", got)
+	}
+}
+
+// TestUseCascadeAbortReportsPartialProgressAndFailingWorktree verifies that
+// when Pull returns a genuine (non-refusal) error partway through a cascade,
+// UseCascade (a) still flushes the summary of worktrees already switched
+// before the failure instead of discarding it, and (b) wraps the returned
+// error with the failing worktree's path so the caller can tell which one
+// broke the cascade.
+//
+// The genuine error is forced by corrupting wt-b's on-disk sync marker
+// (envkeep.base) so its next Pull fails inside state.Load's JSON decode —
+// a real I/O/parse failure, never one of Pull's guard refusals — rather than
+// faking the abort.
+func TestUseCascadeAbortReportsPartialProgressAndFailingWorktree(t *testing.T) {
+	f := fixture(t)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "DB=prod\n")
+	t.Chdir(f["WT_A"])
+	pushEnv(t, f["WT_A"], "prod", true)
+	mustPull(t, f["WT_B"]) // gives wt-b a real marker file to corrupt
+
+	gitDir, err := git.Dir(f["WT_B"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, state.Path(gitDir), "not valid json")
+
+	var buf bytes.Buffer
+	err = UseCascade(&buf, f["WT_A"], "prod", false)
+	if err == nil {
+		t.Fatal("UseCascade: want an error from wt-b's corrupted marker, got nil")
+	}
+	if !strings.Contains(err.Error(), f["WT_B"]) {
+		t.Errorf("abort error should name the failing worktree %q: %v", f["WT_B"], err)
+	}
+	if !strings.Contains(buf.String(), f["WT_A"]) {
+		t.Errorf("abort should still report the worktree switched before the failure:\n%s", buf.String())
 	}
 }

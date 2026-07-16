@@ -44,7 +44,10 @@ func Envs(w io.Writer, cwd string) error {
 // to discard (E4) is skipped and reported rather than clobbered; every other
 // worktree is switched. dryRun previews without writing anything. An error
 // from Pull that is not a refusal (errors.Is(err, ErrRefused)) — a genuine
-// I/O or resolve failure — aborts the whole cascade immediately.
+// I/O or resolve failure — aborts the whole cascade immediately: the summary
+// of worktrees already switched or skipped before the failure is still
+// flushed to w, and the returned error is wrapped with the failing worktree's
+// path (via %w, so errors.Is/As still see the underlying error) for context.
 func UseCascade(w io.Writer, cwd, envName string, dryRun bool) error {
 	ctx, err := Resolve(cwd, "", "")
 	if err != nil {
@@ -62,6 +65,26 @@ func UseCascade(w io.Writer, cwd, envName string, dryRun bool) error {
 	type skipped struct{ path, reason string }
 	var applied []string
 	var skips []skipped
+	verb := "switched"
+	if dryRun {
+		verb = "would switch"
+	}
+	// printSummary writes the "applied"/"skipped" lines collected so far. It is
+	// shared by the normal end-of-loop report and by an abort mid-loop: a
+	// genuine (non-refusal) error must not discard the report of worktrees
+	// already switched or skipped before the one that failed (D28's contract is
+	// that switched worktrees are reported, abort or not).
+	printSummary := func() error {
+		p := &printer{w: w}
+		for _, path := range applied {
+			p.printf("%s: %s to %q\n", path, verb, envName)
+		}
+		for _, s := range skips {
+			p.printf("%s: skipped (%s)\n", s.path, s.reason)
+		}
+		return p.err
+	}
+
 	for _, wt := range wts {
 		if wt.Bare {
 			continue
@@ -73,21 +96,22 @@ func UseCascade(w io.Writer, cwd, envName string, dryRun bool) error {
 		case errors.Is(err, ErrRefused):
 			skips = append(skips, skipped{path: wt.Path, reason: err.Error()})
 		default:
-			return err
+			// Flush what was already switched/skipped before this worktree, then
+			// abort with the failing worktree named so the caller can tell which
+			// one broke the cascade.
+			flushErr := printSummary()
+			aborted := fmt.Errorf("%s: %w", wt.Path, err)
+			if flushErr != nil {
+				return errors.Join(flushErr, aborted)
+			}
+			return aborted
 		}
 	}
 
+	if err := printSummary(); err != nil {
+		return err
+	}
 	p := &printer{w: w}
-	verb := "switched"
-	if dryRun {
-		verb = "would switch"
-	}
-	for _, path := range applied {
-		p.printf("%s: %s to %q\n", path, verb, envName)
-	}
-	for _, s := range skips {
-		p.printf("%s: skipped (%s)\n", s.path, s.reason)
-	}
 	if len(applied) == 0 && len(skips) == 0 {
 		p.printf("no worktrees found\n")
 	}
