@@ -323,3 +323,16 @@ Still open:
   created by `push`). Pre-existing named-env behavior, contradicts D26's
   "checkout -b" framing; maintainer chose to defer. Fix belongs to the named-env
   design, not the cobra migration.
+- **2026-07-16 · FU1 fixed — `use -c` now creates from the current env (checkout -b).**
+  Maintainer reversed the defer after confirming the intended semantic. Added
+  `cli.Use(w, cwd, envName, create, dryRun)`: `use -c <new-inexistent>` routes to
+  the push-create path (snapshots the current worktree's `.env` into the new
+  env's vault + re-points the marker, **local left intact**); switching to an
+  existing env still pulls. `newUseCmd` calls `Use` instead of `Pull`; cascade
+  path unchanged. TDD (checkout-b snapshot, local-not-emptied guard, existing-
+  switch regression), reviewed clean, verified end-to-end on the binary (local
+  A,B,C preserved; staging vault = A,B,C; worktree on staging). D26 clarified.
+  Commit cc90bfc. Minor follow-ups (non-blocking): no direct test for `use -c` on
+  an already-existing env; `Use` resolves the repo twice (once for the exists
+  check, once inside Push/Pull) — negligible for an interactive, non-per-prompt
+  command; no `use -c --dry-run` test.

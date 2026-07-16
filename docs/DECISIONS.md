@@ -464,7 +464,10 @@ it.
 **Decision:** Environments behave like git branches. Targeting/switching to one
 (`--env prod`, `use prod`, `pull --env prod`) **validates that it exists** and
 errors otherwise (like `git checkout nonexistent`); **creating** one is explicit
-(`--create` / `-c`, e.g. `use -c prod`, analogous to `git checkout -b`). The set
+(`--create` / `-c`, e.g. `use -c prod`, analogous to `git checkout -b`: `use -c
+<new>` snapshots the **current** worktree's env into the new environment's vault
+and re-points to it, leaving the local file intact — it creates *from* the
+current state, it never resets the local file). The set
 of environments is discovered live from the vault directories (`vault/*/`) — the
 filesystem is the registry, exactly as `.git/refs/heads/` is for branches — so
 there is no `environments` config list to drift. Names must be filesystem-safe
