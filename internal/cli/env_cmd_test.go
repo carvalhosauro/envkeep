@@ -210,17 +210,6 @@ func TestUseHonorsConfigCascadeDefault(t *testing.T) {
 	}
 }
 
-// TestUseCascadeAbortReportsPartialProgressAndFailingWorktree verifies that
-// when Pull returns a genuine (non-refusal) error partway through a cascade,
-// UseCascade (a) still flushes the summary of worktrees already switched
-// before the failure instead of discarding it, and (b) wraps the returned
-// error with the failing worktree's path so the caller can tell which one
-// broke the cascade.
-//
-// The genuine error is forced by corrupting wt-b's on-disk sync marker
-// (envkeep.base) so its next Pull fails inside state.Load's JSON decode —
-// a real I/O/parse failure, never one of Pull's guard refusals — rather than
-// faking the abort.
 // TestConfigSetGet verifies `config set` persists a value that `config get`
 // then reads back.
 func TestConfigSetGet(t *testing.T) {
@@ -277,6 +266,17 @@ func TestConfigGetUnknownKeyErrors(t *testing.T) {
 	}
 }
 
+// TestUseCascadeAbortReportsPartialProgressAndFailingWorktree verifies that
+// when Pull returns a genuine (non-refusal) error partway through a cascade,
+// UseCascade (a) still flushes the summary of worktrees already switched
+// before the failure instead of discarding it, and (b) wraps the returned
+// error with the failing worktree's path so the caller can tell which one
+// broke the cascade.
+//
+// The genuine error is forced by corrupting wt-b's on-disk sync marker
+// (envkeep.base) so its next Pull fails inside state.Load's JSON decode —
+// a real I/O/parse failure, never one of Pull's guard refusals — rather than
+// faking the abort.
 func TestUseCascadeAbortReportsPartialProgressAndFailingWorktree(t *testing.T) {
 	f := fixture(t)
 	writeFile(t, filepath.Join(f["WT_A"], ".env"), "DB=prod\n")
