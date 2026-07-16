@@ -8,8 +8,10 @@ Append to the log at the end of any working session.
 
 **Phase 0 (Design & docs) — complete. Phase 1 (v1 MVP) — COMPLETE (all 6
 steps), v0.1.0 released. Phase 1.5 (Named environments, issue #3) — STEP 1
-(core, flags-only) DONE on branch `feat/named-environments`; next is step 2
-(CLI restructure to cobra, docker-hybrid).**
+(core, flags-only) DONE and STEP 2 (CLI restructure to cobra, docker-hybrid)
+DONE on branch `feat/named-environments`; branch is review-clean and ready to
+merge. Remaining named-env work is trigger-gated only (`status --all-envs`
+deferred by D32).**
 
 The named-environments design is settled: see
 [`designs/003-named-environments.md`](designs/003-named-environments.md) and
@@ -299,3 +301,25 @@ Still open:
   signatures unchanged. Verified: lint 0, race pass, coverage tiers pass (total
   84.4%), e2e driven against the binary identical. Cobra restructure (step 2) is
   next — to be planned before implementing.
+- **2026-07-16 · Phase 1.5 step 2 (cobra + docker-hybrid) IMPLEMENTED.** Executed
+  the plan in `docs/superpowers/plans/2026-07-14-phase2-cobra-cli.md` via
+  subagent-driven development (fresh implementer + task review each cycle, opus
+  whole-branch review at the end). 15 commits, `369ab7b..fb10891`. Delivered:
+  **A** — CLI runs entirely on `cobra`, every existing verb ported byte-identical
+  (`version`/`status`/`push`/`pull`/`check`/`hook`; `--version`/`-v` restored),
+  `cmd/envkeep/main.go` is now `os.Exit(cli.Execute())`, static `completion` +
+  dynamic `--env` completion. **B** — docker-hybrid env verbs `envs`/`use`/`rm`
+  (rm guarded by worktree `marker.Env` + `--force`; `vault.RemoveEnv`). **C** —
+  `use --cascade` fan-out (D28) reusing Pull's guards via an `ErrRefused` sentinel
+  that keeps direct push/pull refusal messages byte-identical (proven by
+  exact-string tests); `status --all-envs` DEFERRED by decision **D32**. **D** —
+  `config <get|set|list|unset>` over `env_file`/`default_env`/`cascade`. Commands
+  live in `internal/cli` (coverage-counted, D31). Every task passed lint 0 /
+  `-race` / coverage gate; final opus review = READY TO MERGE (0 Critical, 0
+  Important, 4 defer-able Minors). D6→REVISED, D29/D31/D32 recorded.
+  **Known deferred follow-up (FU1):** `use -c <new-env>` when another env already
+  exists re-points to a phantom empty env and empties local (adoptEnv only
+  materializes the vault via legacy-migration for the FIRST env; 2nd+ env vault is
+  created by `push`). Pre-existing named-env behavior, contradicts D26's
+  "checkout -b" framing; maintainer chose to defer. Fix belongs to the named-env
+  design, not the cobra migration.
