@@ -15,7 +15,7 @@ export PATH            := $(BIN):$(PATH)
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X github.com/carvalhosauro/envkeep/internal/buildinfo.Version=$(VERSION)
 
-.PHONY: all setup tools hooks tidy fmt fmt-check lint vet test bench loadtest cover cover-check cover-html build install release-check snapshot clean help
+.PHONY: all setup tools hooks tidy fmt fmt-check lint vet test bench loadtest cover cover-check cover-html build install release-check snapshot demos clean help
 
 ## all: format, lint, test (default local loop)
 all: fmt lint test
@@ -116,6 +116,10 @@ release-check: $(GORELEASER)
 ## snapshot: dry-run a release build (no publish, no tag needed)
 snapshot: $(GORELEASER)
 	$(GORELEASER) build --snapshot --clean --single-target
+
+## demos: re-record the README gifs with vhs (see demo/README.md)
+demos: build
+	./demo/record.sh
 
 ## clean: remove build + coverage artifacts (tools kept)
 clean:
