@@ -102,6 +102,7 @@ go install github.com/carvalhosauro/envkeep/cmd/envkeep@latest
 ## Commands
 
 ```
+envkeep init [--env-file <f>]  # bootstrap: record the tracked file in the repo config + first push
 envkeep status                 # per-worktree: active env + clean / ahead / behind / diverged / conflict / absent
 envkeep push [--env <env>]     # local .env -> vault (union merge; refuses on conflict)
 envkeep pull [--env <env>]     # vault -> local .env (preserves order/comments, reapplies override)
