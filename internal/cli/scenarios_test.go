@@ -23,8 +23,11 @@ func TestPushDryRunDoesNotWriteVault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "dry run") || !strings.Contains(out, "+ KEY=value") {
+	if !strings.Contains(out, "dry run") || !strings.Contains(out, "+ KEY") {
 		t.Errorf("dry-run output = %q, want delta + dry-run note", out)
+	}
+	if strings.Contains(out, "value") {
+		t.Errorf("dry-run output = %q, must not leak secret values (#22)", out)
 	}
 	if _, err := os.Stat(f["COMMON_DIR"] + "/envkeep/vault/.env"); !os.IsNotExist(err) {
 		t.Error("dry-run must not create the vault")
@@ -136,5 +139,25 @@ func TestStatusUnsynced(t *testing.T) {
 	}
 	if !strings.Contains(out, "unsynced") {
 		t.Errorf("status = %q, want wt-b 'unsynced'", out)
+	}
+}
+
+// Conflict output lists key names only — values are secrets (#22).
+func TestConflictOutputRedactsValues(t *testing.T) {
+	f := fixture(t)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=v1\n")
+	mustPush(t, f["WT_A"])
+	mustPull(t, f["WT_B"])
+
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=v2\n")
+	mustPush(t, f["WT_A"]) // vault -> v2
+	writeFile(t, filepath.Join(f["WT_B"], ".env"), "KEY=v3\n")
+
+	out, err := run(t, func(b *bytes.Buffer) error { return Push(b, f["WT_B"], "", "", false, false, false) })
+	if err == nil || !strings.Contains(err.Error(), "conflict") {
+		t.Fatalf("push = %v, want conflict refusal", err)
+	}
+	if !strings.Contains(out, "KEY") || strings.Contains(out, "v2") || strings.Contains(out, "v3") {
+		t.Errorf("conflict output = %q, want key name without values", out)
 	}
 }

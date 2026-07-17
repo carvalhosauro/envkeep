@@ -6,25 +6,28 @@ import (
 	"github.com/carvalhosauro/envkeep/internal/state"
 )
 
-// printDelta renders a change set as a git-style +/~/- listing.
+// printDelta renders a change set as a git-style +/~/- listing. Only key names
+// are shown — values are secrets and must not reach stdout (scrollback, CI
+// logs), on real runs and --dry-run alike (#22).
 func printDelta(p *printer, target string, d envfile.Delta) {
 	p.printf("changes to %s:\n", target)
 	for _, c := range d.Added {
-		p.printf("  + %s=%s\n", c.Key, c.New)
+		p.printf("  + %s\n", c.Key)
 	}
 	for _, c := range d.Changed {
-		p.printf("  ~ %s: %s -> %s\n", c.Key, c.Old, c.New)
+		p.printf("  ~ %s\n", c.Key)
 	}
 	for _, c := range d.Removed {
-		p.printf("  - %s (was %s)\n", c.Key, c.Old)
+		p.printf("  - %s\n", c.Key)
 	}
 }
 
-// printConflicts renders the per-key 3-way conflict detail.
+// printConflicts renders the per-key 3-way conflict listing. Key names only —
+// values are secrets (#22).
 func printConflicts(p *printer, cs []envfile.KeyConflict) {
 	p.printf("conflicting keys:\n")
 	for _, c := range cs {
-		p.printf("  %s: base=%q local=%q vault=%q\n", c.Key, c.Base, c.Local, c.Vault)
+		p.printf("  %s\n", c.Key)
 	}
 }
 
