@@ -161,10 +161,10 @@ func setupLoaded(tb testing.TB, keys, nwt int, big bool) []string {
 	if err := os.WriteFile(filepath.Join(wts[0], ".env"), []byte(env), 0o600); err != nil {
 		tb.Fatal(err)
 	}
-	mustCmd(tb, "push", func(b *bytes.Buffer) error { return Push(b, wts[0], "", false) })
+	mustCmd(tb, "push", func(b *bytes.Buffer) error { return Push(b, wts[0], "", "", false, false) })
 	for _, wt := range wts[1:] {
 		w := wt
-		mustCmd(tb, "pull", func(b *bytes.Buffer) error { return Pull(b, w, "", false) })
+		mustCmd(tb, "pull", func(b *bytes.Buffer) error { return Pull(b, w, "", "", false, false) })
 	}
 	return wts
 }
@@ -179,11 +179,11 @@ func mustCmd(tb testing.TB, name string, fn func(*bytes.Buffer) error) {
 
 func vaultFile(tb testing.TB, cwd string) string {
 	tb.Helper()
-	ctx, err := Resolve(cwd, "")
+	ctx, err := Resolve(cwd, "", "")
 	if err != nil {
 		tb.Fatal(err)
 	}
-	return ctx.VaultPath
+	return ctx.vaultPath("")
 }
 
 // TestLoadScale drives the sync commands over a large synthetic env across many
@@ -203,10 +203,12 @@ func TestLoadScale(t *testing.T) {
 	t.Logf("env: %d keys, %.1f KiB, %d worktrees, big=%v", keys, float64(len(env))/1024, nwt, big)
 	writeFile(t, filepath.Join(wts[0], ".env"), env)
 
-	timed(t, "push", func() { mustCmd(t, "push", func(b *bytes.Buffer) error { return Push(b, wts[0], "", false) }) })
+	timed(t, "push", func() {
+		mustCmd(t, "push", func(b *bytes.Buffer) error { return Push(b, wts[0], "", "", false, false) })
+	})
 	timed(t, "pull all", func() {
 		for _, wt := range wts[1:] {
-			mustCmd(t, "pull", func(b *bytes.Buffer) error { return Pull(b, wt, "", false) })
+			mustCmd(t, "pull", func(b *bytes.Buffer) error { return Pull(b, wt, "", "", false, false) })
 		}
 	})
 	timed(t, "status fast", func() { runStatus(t, wts[0]) })
@@ -237,7 +239,7 @@ func TestLoadScale(t *testing.T) {
 	firstKey := strings.SplitN(firstKV, "=", 2)[0]
 	changed := strings.Replace(env, firstKV, firstKey+"=CHANGED_LOADTEST_VALUE", 1)
 	writeFile(t, filepath.Join(wts[0], ".env"), changed)
-	mustCmd(t, "push", func(b *bytes.Buffer) error { return Push(b, wts[0], "", false) })
+	mustCmd(t, "push", func(b *bytes.Buffer) error { return Push(b, wts[0], "", "", false, false) })
 	writeFile(t, filepath.Join(wts[2], ".env"), changed) // matches vault, base stale
 	if tok := checkPorcelain(t, wts[2]); tok != "" {
 		t.Errorf("#1 stale-base-agrees should be clean, got %q", tok)
@@ -247,7 +249,7 @@ func TestLoadScale(t *testing.T) {
 func runStatus(t *testing.T, cwd string) string {
 	t.Helper()
 	var b bytes.Buffer
-	if err := Status(&b, cwd, ""); err != nil {
+	if err := Status(&b, cwd, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	return b.String()
@@ -278,7 +280,7 @@ func BenchmarkStatusFastPath(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
 		var buf bytes.Buffer
-		if err := Status(&buf, wts[0], ""); err != nil {
+		if err := Status(&buf, wts[0], "", ""); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -296,7 +298,7 @@ func BenchmarkStatusReparseAll(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
 		var buf bytes.Buffer
-		if err := Status(&buf, wts[0], ""); err != nil {
+		if err := Status(&buf, wts[0], "", ""); err != nil {
 			b.Fatal(err)
 		}
 	}

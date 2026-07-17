@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"github.com/carvalhosauro/envkeep/internal/env"
 	"github.com/carvalhosauro/envkeep/internal/envfile"
 	"github.com/carvalhosauro/envkeep/internal/state"
 )
@@ -27,10 +28,14 @@ func printConflicts(p *printer, cs []envfile.KeyConflict) {
 	}
 }
 
-// saveMarker records the current sync point for the worktree: base is the shared
-// content just synced to, mtimes are the files' current mtimes.
-func saveMarker(ctx *Context, base envfile.Env) error {
-	lm, _ := mtimeNanos(ctx.LocalPath)
-	vm, _ := mtimeNanos(ctx.VaultPath)
-	return state.Save(ctx.GitDir, state.Marker{Base: base, LocalMTime: lm, VaultMTime: vm})
+// saveMarker records the current sync point for the worktree: e is the active
+// environment the local file now holds, base is e's vault content just synced
+// to, mtimes are the files' current mtimes (the vault mtime is e's vault).
+func saveMarker(ctx *Context, e env.Name, base envfile.Env) error {
+	lm, _ := mtimeNanos(ctx.self.localPath)
+	vm, _ := mtimeNanos(ctx.vaultPath(e))
+	return state.Save(ctx.self.gitDir, state.Marker{
+		Stat: state.Stat{Env: e, LocalMTime: lm, VaultMTime: vm},
+		Base: base,
+	})
 }

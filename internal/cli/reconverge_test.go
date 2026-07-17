@@ -98,7 +98,7 @@ func TestStatusStaleBaseAgreesShowsClean(t *testing.T) {
 	f := staleBaseAgreeing(t)
 
 	var b bytes.Buffer
-	if err := Status(&b, f["WT_B"], ""); err != nil {
+	if err := Status(&b, f["WT_B"], "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if out := b.String(); bytes.Contains([]byte(out), []byte("diverged")) {

@@ -1,0 +1,191 @@
+package cli
+
+import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/carvalhosauro/envkeep/internal/buildinfo"
+)
+
+// execRoot runs the root command with args, capturing combined stdout+stderr.
+func execRoot(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+	var out bytes.Buffer
+	root := newRootCmd()
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs(args)
+	err := root.Execute()
+	return out.String(), err
+}
+
+func TestRootVersion(t *testing.T) {
+	out, err := execRoot(t, "version")
+	if err != nil {
+		t.Fatalf("version: %v", err)
+	}
+	if !strings.Contains(out, "envkeep") || !strings.Contains(out, buildinfo.Version) {
+		t.Errorf("version output = %q, want it to contain envkeep + %q", out, buildinfo.Version)
+	}
+}
+
+// TestRootVersionAliases verifies the pre-cobra `version`/`--version`/`-v`
+// trio all still print byte-identical "envkeep <version>\n" output, matching
+// what the old fmt.Println("envkeep", buildinfo.Version) produced.
+func TestRootVersionAliases(t *testing.T) {
+	want := "envkeep " + buildinfo.Version + "\n"
+
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"subcommand", []string{"version"}},
+		{"long-flag", []string{"--version"}},
+		{"short-flag", []string{"-v"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := execRoot(t, tc.args...)
+			if err != nil {
+				t.Fatalf("%v: %v", tc.args, err)
+			}
+			if out != want {
+				t.Errorf("%v output = %q, want %q", tc.args, out, want)
+			}
+		})
+	}
+}
+
+// TestExecute exercises Execute()'s success and error branches directly,
+// since it drives os.Args rather than accepting an injected arg slice.
+func TestExecute(t *testing.T) {
+	origArgs := os.Args
+	defer func() { os.Args = origArgs }()
+
+	t.Run("success", func(t *testing.T) {
+		os.Args = []string{"envkeep", "version"}
+		if code := Execute(); code != exitOK {
+			t.Errorf("Execute() = %d, want %d", code, exitOK)
+		}
+	})
+
+	t.Run("error", func(t *testing.T) {
+		os.Args = []string{"envkeep", "definitely-not-a-command"}
+		if code := Execute(); code != exitError {
+			t.Errorf("Execute() = %d, want %d", code, exitError)
+		}
+	})
+}
+
+// TestRootStatusPortsBehavior verifies the cobra `status` subcommand still
+// reports "clean" for a worktree right after its .env is pushed to the vault.
+// push isn't ported to cobra until A3, so the vault is seeded here via the
+// existing mustPush function-level helper instead of execRoot(t, "push"),
+// keeping A2 independently testable.
+func TestRootStatusPortsBehavior(t *testing.T) {
+	f := fixture(t)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=value\n")
+	t.Chdir(f["WT_A"])
+
+	mustPush(t, f["WT_A"])
+
+	out, err := execRoot(t, "status")
+	if err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if !strings.Contains(out, "clean") {
+		t.Errorf("status output missing 'clean':\n%s", out)
+	}
+}
+
+// TestRootPushPullRoundTrip verifies the cobra push/pull subcommands round
+// -trip a value from one worktree's .env through the vault into another.
+func TestRootPushPullRoundTrip(t *testing.T) {
+	f := fixture(t)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=value\nOTHER=x\n")
+	t.Chdir(f["WT_A"])
+	if _, err := execRoot(t, "push"); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	t.Chdir(f["WT_B"])
+	if _, err := execRoot(t, "pull"); err != nil {
+		t.Fatalf("pull: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(f["WT_B"], ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "KEY=value") {
+		t.Errorf("wt-b .env missing KEY after pull:\n%s", got)
+	}
+}
+
+// TestRootCheckSilentWhenClean verifies the cobra `check` subcommand stays
+// silent for a worktree right after its .env is pushed to the vault.
+func TestRootCheckSilentWhenClean(t *testing.T) {
+	f := fixture(t)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=value\n")
+	t.Chdir(f["WT_A"])
+	mustPush(t, f["WT_A"])
+	out, err := execRoot(t, "check")
+	if err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	if strings.TrimSpace(out) != "" {
+		t.Errorf("check should be silent when clean, got:\n%s", out)
+	}
+}
+
+// TestRootHookEmitsSnippet verifies the cobra `hook` subcommand still emits the
+// zsh shell-integration snippet and still errors for an unsupported shell.
+func TestRootHookEmitsSnippet(t *testing.T) {
+	out, err := execRoot(t, "hook", "zsh")
+	if err != nil {
+		t.Fatalf("hook zsh: %v", err)
+	}
+	if !strings.Contains(out, "_envkeep_check") {
+		t.Errorf("hook zsh output missing the shell function:\n%s", out)
+	}
+	if _, err := execRoot(t, "hook", "fish"); err == nil {
+		t.Error("hook fish: want error for unsupported shell, got nil")
+	}
+}
+
+// TestCompleteEnvNames verifies completeEnvNames lists existing environment
+// names (sorted) for --env shell completion, backed by vault.Environments.
+func TestCompleteEnvNames(t *testing.T) {
+	f := fixture(t)
+	// create two environments by pushing with --create
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "K=1\n")
+	t.Chdir(f["WT_A"])
+	if _, err := execRoot(t, "push", "--env", "prod", "--create"); err != nil {
+		t.Fatalf("create prod: %v", err)
+	}
+	if _, err := execRoot(t, "push", "--env", "homo", "--create"); err != nil {
+		t.Fatalf("create homo: %v", err)
+	}
+	got, _ := completeEnvNames("")
+	if len(got) != 2 || got[0] != "homo" || got[1] != "prod" {
+		t.Errorf("completeEnvNames = %v, want [homo prod]", got)
+	}
+}
+
+// TestProcessCwd asserts processCwd is just os.Getwd, wired for later
+// subcommands (status/push/pull/check) in A2-A5.
+func TestProcessCwd(t *testing.T) {
+	got, err := processCwd()
+	if err != nil {
+		t.Fatalf("processCwd() error = %v", err)
+	}
+	want, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("os.Getwd() error = %v", err)
+	}
+	if got != want {
+		t.Errorf("processCwd() = %q, want %q", got, want)
+	}
+}

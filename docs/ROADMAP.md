@@ -45,6 +45,55 @@ default (D12); integration tests driven by the fixture, golden outputs in
 "I forgot to update the other worktree"; the shell hook eliminates "I forgot to
 run the command." Both together = the pain is solved.
 
+## Phase 1.5 — Named environments (issue #3)  ▶ next
+
+The trigger fired: one logical key must carry different values per deployment
+target (`local` / `homo` / `prod`) without duplicated keys. Full design +
+resolved decisions in [`designs/003-named-environments.md`](designs/003-named-environments.md)
+(D23–D30). Model A (independent per-env vaults), per-worktree active env
+(git-worktree-HEAD analogue), git-branch env model (validate-to-switch,
+`--create`/`-c` to make), single env-agnostic override. Build order:
+
+1. **Core dimension (no cobra yet — flags on existing verbs).** `vault/<env>/<file>`
+   layout + live env discovery from `vault/*/`; `marker.Env` + legacy (`Env:""`)
+   tolerance; `--env` (+ `--create`/`-c`) on `push`/`pull`/`status`;
+   existence-validated switching; selection precedence; `check` reads `marker.Env`;
+   opt-in migration of the legacy flat vault (D27); config `default_env` /
+   `cascade`; `status` shows each worktree's active env + state (and `--env`
+   forces a comparison env). Fixtures + goldens + the R3 byte-identical legacy
+   back-compat golden. (D23–D27, D30) ✅ **DONE** (2026-07-14).
+1.9. **Domain-model refactor** (post-review, pre-cobra). ✅ **DONE (2026-07-14).**
+   Leaf `internal/env` (`env.Name`), consolidated drift state machine
+   (`assessWorktree`), `state.Stat` DTO, and the `Repo` / `Context` split (D31).
+   Internal only, no behavior change — tightens the boundaries before the CLI
+   grows. See STATUS log.
+2. **CLI restructure → `cobra`, docker-style hybrid (D29, revises D6).** Plan in
+   [`designs/004-cobra-cli.md`](designs/004-cobra-cli.md) (D31). Sub-phased:
+   - **2a** — adopt cobra, port the existing verbs (`status`/`push`/`pull`/
+     `check`/`hook`/`version`) with identical behavior + shell completions
+     (static + dynamic `--env` from `vault/*/`). Commands live in `internal/cli`.
+   - **2b** — the docker-hybrid env surface: top-level `use <env>` (re-point the
+     current worktree, D31) / `envs` (list) / `rm <env>` (guarded, E5), and the
+     one `envkeep config <get|set|list|unset>` group. `set` is reserved for
+     `config set`.
+3. **2c — `use` cascade fan-out (D28).** ✅ **DONE (2026-07-16).** Repo-wide
+   switch (`use <env> --cascade`, or config `cascade=true`); `--dry-run`;
+   `ahead`/`conflict`/`diverged` worktrees skipped-and-reported, never
+   clobbered (reuses Pull's guards via the `ErrRefused` sentinel).
+4. **Deferred (out of scope, gated) — `status --all-envs`** (the full worktree ×
+   environment matrix). Needs a per-env base the marker does not store today;
+   **not built** — see **D32** for the deferral decision and its
+   reconsider-trigger.
+
+**Trigger-gated within this feature:** the `shared` layer (Model B) — added only
+if re-declaring common keys across envs becomes real pain (D24 trigger). The
+`vault/<env>/…` layout already receives it with no migration.
+
+**Exit / success criterion:** a key holds different values under `prod` vs `homo`
+with no duplication; `push`/`pull`/`status` operate against a selectable
+environment defaulting to a configured one; existing single-env repos are
+byte-identical (R3).
+
 ## Phase 2 — Encryption (deferred; trigger-gated)  🔒
 
 Only when D14's conditions make plaintext uncomfortable. Pattern: **per-machine
@@ -63,7 +112,7 @@ None of these get built speculatively. Each has a concrete trigger in
 | SQLite / cross-repo state index; `status --all` | Scope moves from per-repo to all-repos, or auditable push/pull history is wanted (D2) |
 | Team / remote sync; Vault/Doppler/1Password adapters | A real person asks to use it in a team — then a new `VaultStore` adapter, not a redesign (D16, D17) |
 | Daemon / `fsnotify` watch mode | The shell hook proves insufficient in practice, e.g. IDE terminals that don't source `.zshrc` leave you stale often (D15) |
-| `cobra` CLI framework + self-generated completions | Command count grows past ~10, or the binary should emit its own completions (D6) |
+| ~~`cobra` CLI framework + self-generated completions~~ → **triggered, moved to Phase 1.5** | Trigger fired: named environments add noun-grouped `env`/`config` subcommands + completions (D6 → D29) |
 
 ## Guiding principle
 

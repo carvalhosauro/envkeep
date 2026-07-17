@@ -7,7 +7,20 @@ Append to the log at the end of any working session.
 ## Current phase
 
 **Phase 0 (Design & docs) — complete. Phase 1 (v1 MVP) — COMPLETE (all 6
-steps).**
+steps), v0.1.0 released. Phase 1.5 (Named environments, issue #3) — STEP 1
+(core, flags-only) DONE and STEP 2 (CLI restructure to cobra, docker-hybrid)
+DONE on branch `feat/named-environments`; branch is review-clean and ready to
+merge. Remaining named-env work is trigger-gated only (`status --all-envs`
+deferred by D32).**
+
+The named-environments design is settled: see
+[`designs/003-named-environments.md`](designs/003-named-environments.md) and
+decisions D23–D30 (D29 revises D6 → adopt `cobra`). Nine forks resolved with the
+maintainer over three rounds. Step 1 is implemented and verified: per-env vaults
+(`vault/<env>/<file>`), per-worktree active env (`marker.Env`), git-branch model
+(`--env` + `--create`/`-c`), opt-in legacy migration, `default_env`/`cascade`
+config, env-aware push/pull/status/check. Lint clean, coverage tiers pass (total
+84.1%), driven end-to-end against the real binary.
 
 Both halves of the success criterion are met: `push`/`pull`/`status` propagate
 env across worktrees (handling per-worktree overrides and conflicts), and the
@@ -32,11 +45,20 @@ recorded in [`DECISIONS.md`](DECISIONS.md).
 
 ## Next action
 
-Phase 1 is done. Candidate follow-ups (none blocking, pick per need):
-- Real-world shakedown: use it daily across actual worktrees; watch for the
-  daemon trigger (D15 — hook proving insufficient) or any rough edges.
-- Polish backlog (small): `--prune` for push deletions (D20), interactive
-  conflict resolution, tag/version stamping for releases.
+**Continue Phase 1.5 — Named environments** (issue #3), build order in
+[`ROADMAP.md`](ROADMAP.md) / [`designs/003-named-environments.md`](designs/003-named-environments.md) §15:
+1. ~~Core dimension (flags on existing verbs)~~ ✅ **DONE** — env-aware
+   push/pull/status/check, git-branch `--env`/`-c`, migration, per-env vaults,
+   `marker.Env`, config keys, new unit + integration tests.
+2. **NEXT — CLI restructure → `cobra`, docker-hybrid:** top-level env verbs
+   `use`/`envs`/`rm` + the one `config <…>` group + completions (D29). `set` =
+   config only. Also `status --all-envs` matrix (deferred from step 1).
+3. `use` cascade fan-out (D28).
+
+Other follow-ups (non-blocking, pick per need):
+- Real-world shakedown; watch for the daemon trigger (D15) or rough edges.
+- Polish backlog: `--prune` for push deletions (D20), interactive conflict
+  resolution.
 - Phase 2 (encryption) stays gated behind D14; do not start without the trigger.
 
 All 6 build steps done: mkfixture, envfile (96.1%), git (73.8%), vault (~95%),
@@ -223,3 +245,94 @@ Still open:
   `env.Equal(base)` answers exactly what a hash would, with no schema bump or
   legacy-marker migration. Verified end-to-end against a real git fixture and the
   built binary; regression tests cover pull/push/check/status + mtime-bump.
+- **2026-07-13 · Named environments designed (issue #3) — design 003, D23–D30.**
+  Worked the whole feature to a decided spec before any code:
+  `docs/designs/003-named-environments.md`. Nine forks (DP1–DP9) resolved with
+  the maintainer over three rounds. Outcomes: environment is a dimension between vault
+  and override, `vault/<env>/<file>`, `effective = env ⊕ override` (D23);
+  **independent per-env vaults** (Model A) — no shared layer, layout pre-wired so
+  a future `shared` layer is a zero-migration add (D24); **per-worktree active
+  env** via `marker.Env` (the git-worktree-HEAD analogue) with a `default_env`
+  fallback (D25); **git-branch model** — validate-to-switch, `--create`/`-c` to
+  make, env set discovered live from `vault/*/` (no `environments` config key,
+  D26); **opt-in migration** of the legacy flat vault on first env create, with
+  `Env:""` read as default (D27); env switch verb `use`, with opt-in `cascade`
+  fan-out as phase 2 (D28); **adopt `cobra` in a docker-style hybrid** — env ops
+  are top-level verbs (`use`/`envs`/`rm`, no redundant `env` prefix), only
+  `config` is a noun group, `set` reserved for `config set`; D6's trigger fired
+  (D29); single env-agnostic override kept (D30). SWAP model (one tracked file
+  whose contents swap on switch) and single-file scope confirmed; multi-file
+  stays deferred to D12. ROADMAP gains Phase 1.5 (build order: core flags →
+  cobra/hybrid restructure → `use` cascade). No implementation yet — decisions
+  recorded for review first.
+- **2026-07-14 · Phase 1.5 step 1 (core, flags-only) implemented.** On branch
+  `feat/named-environments` (worktree). `vault`: `PathForEnv` (`vault/<env>/<file>`,
+  legacy `""` → flat path), live `Environments` discovery from `vault/*/`,
+  `EnvExists`, `ValidEnvName`. `config`: `default_env` + `cascade` keys (Save
+  omits them when unset → R3-preserving bare config). `state`: `Marker.Env`
+  (omitempty; legacy markers decode to ""), `LoadStat` returns the env. `cli`:
+  Context resolves env by `--env > marker.Env > default_env > ""` (D25);
+  push/pull/status/check env-aware; git-branch existence gate with `--create`/`-c`
+  (D26); opt-in legacy→env migration on first create with `default_env` set (D27);
+  pull re-point switches env and guards unpushed edits in the current env (E4);
+  `status` shows a per-worktree active-env column + environments header. New
+  unit tests (vault/config/state) + integration tests (per-env values, unknown
+  env refused, re-point, E4 guard, migration, R3 legacy-unchanged). Existing
+  suite green with the new signatures. Lint clean; coverage tiers pass (vault
+  95.6 / config 91.7 / state 87.0 / cli 79.2; total 84.1%). Verified end-to-end
+  by driving the built binary through the full lifecycle. `status --all-envs`
+  matrix deferred to step 2 (needs a per-env base the marker does not store).
+  Cobra restructure (step 2) is next.
+- **2026-07-14 · Domain-model refactor (post-review, pre-cobra).** Before growing
+  the CLI surface, tightened the types/boundaries the env work exposed. New leaf
+  `internal/env` package with `EnvName` type (`env.Name`; renamed from EnvName to
+  satisfy revive's stutter rule) + `Unnamed`/`Validate`/`IsUnnamed`/`String`,
+  threaded through vault/state/config/cli (replaces `vault.ValidEnvName`,
+  string-typed env params). Consolidated the drift state machine: `check` and
+  `status` now share one `assessWorktree` (`cli/drift.go`, `drift` result type) —
+  no more duplicated fast-path/slow-path. `state.LoadStat` returns a `Stat` DTO
+  (was 5 loose returns) and `Marker` embeds `Stat`, so a stat field is defined
+  once and JSON is unchanged; symmetric with `Load`'s `(Marker, bool, error)`.
+  Split `cli.Context` into `Repo` (repo-level: CommonDir/EnvFile/EnvFlag/
+  DefaultEnv, owns vaultPath/resolveEnv/ensureTargetEnv/adoptEnv/worktreeAt) +
+  the invoking worktree's `worktreePaths` (self); `assessWorktree(r *Repo, wt
+  worktreePaths, …)` now has honest deps. Migration moved to `vault.MigrateLegacy`
+  (vault owns the layout). All internal only — no behavior change; public command
+  signatures unchanged. Verified: lint 0, race pass, coverage tiers pass (total
+  84.4%), e2e driven against the binary identical. Cobra restructure (step 2) is
+  next — to be planned before implementing.
+- **2026-07-16 · Phase 1.5 step 2 (cobra + docker-hybrid) IMPLEMENTED.** Executed
+  the plan in `docs/superpowers/plans/2026-07-14-phase2-cobra-cli.md` via
+  subagent-driven development (fresh implementer + task review each cycle, opus
+  whole-branch review at the end). 15 commits, `369ab7b..fb10891`. Delivered:
+  **A** — CLI runs entirely on `cobra`, every existing verb ported byte-identical
+  (`version`/`status`/`push`/`pull`/`check`/`hook`; `--version`/`-v` restored),
+  `cmd/envkeep/main.go` is now `os.Exit(cli.Execute())`, static `completion` +
+  dynamic `--env` completion. **B** — docker-hybrid env verbs `envs`/`use`/`rm`
+  (rm guarded by worktree `marker.Env` + `--force`; `vault.RemoveEnv`). **C** —
+  `use --cascade` fan-out (D28) reusing Pull's guards via an `ErrRefused` sentinel
+  that keeps direct push/pull refusal messages byte-identical (proven by
+  exact-string tests); `status --all-envs` DEFERRED by decision **D32**. **D** —
+  `config <get|set|list|unset>` over `env_file`/`default_env`/`cascade`. Commands
+  live in `internal/cli` (coverage-counted, D31). Every task passed lint 0 /
+  `-race` / coverage gate; final opus review = READY TO MERGE (0 Critical, 0
+  Important, 4 defer-able Minors). D6→REVISED, D29/D31/D32 recorded.
+  **Known deferred follow-up (FU1):** `use -c <new-env>` when another env already
+  exists re-points to a phantom empty env and empties local (adoptEnv only
+  materializes the vault via legacy-migration for the FIRST env; 2nd+ env vault is
+  created by `push`). Pre-existing named-env behavior, contradicts D26's
+  "checkout -b" framing; maintainer chose to defer. Fix belongs to the named-env
+  design, not the cobra migration.
+- **2026-07-16 · FU1 fixed — `use -c` now creates from the current env (checkout -b).**
+  Maintainer reversed the defer after confirming the intended semantic. Added
+  `cli.Use(w, cwd, envName, create, dryRun)`: `use -c <new-inexistent>` routes to
+  the push-create path (snapshots the current worktree's `.env` into the new
+  env's vault + re-points the marker, **local left intact**); switching to an
+  existing env still pulls. `newUseCmd` calls `Use` instead of `Pull`; cascade
+  path unchanged. TDD (checkout-b snapshot, local-not-emptied guard, existing-
+  switch regression), reviewed clean, verified end-to-end on the binary (local
+  A,B,C preserved; staging vault = A,B,C; worktree on staging). D26 clarified.
+  Commit cc90bfc. Minor follow-ups (non-blocking): no direct test for `use -c` on
+  an already-existing env; `Use` resolves the repo twice (once for the exists
+  check, once inside Push/Pull) — negligible for an interactive, non-per-prompt
+  command; no `use -c --dry-run` test.
