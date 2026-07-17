@@ -48,6 +48,7 @@ func newRootCmd() *cobra.Command {
 	root.Version = buildinfo.Version
 	root.SetVersionTemplate("envkeep {{.Version}}\n")
 	root.AddCommand(newVersionCmd())
+	root.AddCommand(newInitCmd())
 	root.AddCommand(newStatusCmd())
 	root.AddCommand(newPushCmd(), newPullCmd())
 	root.AddCommand(newCheckCmd())
@@ -97,6 +98,26 @@ func completeEnvNames(_ string) ([]string, cobra.ShellCompDirective) {
 		names[i] = e.String()
 	}
 	return names, cobra.ShellCompDirectiveNoFileComp
+}
+
+func newInitCmd() *cobra.Command {
+	var file string
+	var dry bool
+	cmd := &cobra.Command{
+		Use:   "init",
+		Short: "bootstrap envkeep: record the tracked env file and seed the vault",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cwd, err := processCwd()
+			if err != nil {
+				return err
+			}
+			return Init(cmd.OutOrStdout(), cwd, file, dry)
+		},
+	}
+	cmd.Flags().StringVar(&file, "env-file", "", "tracked env filename to record in the repo config (default .env)")
+	cmd.Flags().BoolVar(&dry, "dry-run", false, "show what would change without writing")
+	return cmd
 }
 
 func newStatusCmd() *cobra.Command {
