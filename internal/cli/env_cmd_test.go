@@ -482,7 +482,11 @@ func TestUseCascadeAbortReportsPartialProgressAndFailingWorktree(t *testing.T) {
 	writeFile(t, state.Path(gitDir), "not valid json")
 
 	var buf bytes.Buffer
-	err = UseCascade(&buf, f["WT_A"], "prod", false)
+	ctx, err := Resolve(f["WT_A"], "", "prod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = UseCascade(ctx, &buf, false)
 	if err == nil {
 		t.Fatal("UseCascade: want an error from wt-b's corrupted marker, got nil")
 	}

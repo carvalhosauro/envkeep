@@ -161,10 +161,10 @@ func setupLoaded(tb testing.TB, keys, nwt int, big bool) []string {
 	if err := os.WriteFile(filepath.Join(wts[0], ".env"), []byte(env), 0o600); err != nil {
 		tb.Fatal(err)
 	}
-	mustCmd(tb, "push", func(b *bytes.Buffer) error { return Push(b, wts[0], "", "", false, false, false) })
+	mustCmd(tb, "push", func(b *bytes.Buffer) error { return Push(b, wts[0], "", "", PushOpts{}) })
 	for _, wt := range wts[1:] {
 		w := wt
-		mustCmd(tb, "pull", func(b *bytes.Buffer) error { return Pull(b, w, "", "", false, false) })
+		mustCmd(tb, "pull", func(b *bytes.Buffer) error { return Pull(b, w, "", "", SyncOpts{}) })
 	}
 	return wts
 }
@@ -204,11 +204,11 @@ func TestLoadScale(t *testing.T) {
 	writeFile(t, filepath.Join(wts[0], ".env"), env)
 
 	timed(t, "push", func() {
-		mustCmd(t, "push", func(b *bytes.Buffer) error { return Push(b, wts[0], "", "", false, false, false) })
+		mustCmd(t, "push", func(b *bytes.Buffer) error { return Push(b, wts[0], "", "", PushOpts{}) })
 	})
 	timed(t, "pull all", func() {
 		for _, wt := range wts[1:] {
-			mustCmd(t, "pull", func(b *bytes.Buffer) error { return Pull(b, wt, "", "", false, false) })
+			mustCmd(t, "pull", func(b *bytes.Buffer) error { return Pull(b, wt, "", "", SyncOpts{}) })
 		}
 	})
 	timed(t, "status fast", func() { runStatus(t, wts[0]) })
@@ -239,7 +239,7 @@ func TestLoadScale(t *testing.T) {
 	firstKey := strings.SplitN(firstKV, "=", 2)[0]
 	changed := strings.Replace(env, firstKV, firstKey+"=CHANGED_LOADTEST_VALUE", 1)
 	writeFile(t, filepath.Join(wts[0], ".env"), changed)
-	mustCmd(t, "push", func(b *bytes.Buffer) error { return Push(b, wts[0], "", "", false, false, false) })
+	mustCmd(t, "push", func(b *bytes.Buffer) error { return Push(b, wts[0], "", "", PushOpts{}) })
 	writeFile(t, filepath.Join(wts[2], ".env"), changed) // matches vault, base stale
 	if tok := checkPorcelain(t, wts[2]); tok != "" {
 		t.Errorf("#1 stale-base-agrees should be clean, got %q", tok)

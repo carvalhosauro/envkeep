@@ -47,7 +47,7 @@ func writeFile(t *testing.T, path, content string) {
 func mustPush(t *testing.T, cwd string) string {
 	t.Helper()
 	var b bytes.Buffer
-	if err := Push(&b, cwd, "", "", false, false, false); err != nil {
+	if err := Push(&b, cwd, "", "", PushOpts{}); err != nil {
 		t.Fatalf("Push(%s): %v\n%s", cwd, err, b.String())
 	}
 	return b.String()
@@ -56,7 +56,7 @@ func mustPush(t *testing.T, cwd string) string {
 func mustPull(t *testing.T, cwd string) string {
 	t.Helper()
 	var b bytes.Buffer
-	if err := Pull(&b, cwd, "", "", false, false); err != nil {
+	if err := Pull(&b, cwd, "", "", SyncOpts{}); err != nil {
 		t.Fatalf("Pull(%s): %v\n%s", cwd, err, b.String())
 	}
 	return b.String()
@@ -146,7 +146,7 @@ func TestPushConflictRefused(t *testing.T) {
 
 	writeFile(t, filepath.Join(f["WT_B"], ".env"), "KEY=v3\n")
 	var b bytes.Buffer
-	err := Push(&b, f["WT_B"], "", "", false, false, false)
+	err := Push(&b, f["WT_B"], "", "", PushOpts{})
 	if err == nil {
 		t.Fatalf("expected conflict error, got success:\n%s", b.String())
 	}
@@ -162,7 +162,7 @@ func TestPullRefusesWhenLocalAhead(t *testing.T) {
 
 	// Local edited after sync, vault unchanged -> ahead -> pull must refuse.
 	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=v2\n")
-	err := Pull(&bytes.Buffer{}, f["WT_A"], "", "", false, false)
+	err := Pull(&bytes.Buffer{}, f["WT_A"], "", "", SyncOpts{})
 	if err == nil || !strings.Contains(err.Error(), "push") {
 		t.Errorf("Pull error = %v, want a refusal telling to push first", err)
 	}
@@ -180,7 +180,7 @@ func TestPullAheadRefusalMessageUnchangedAndClassifiable(t *testing.T) {
 	mustPush(t, f["WT_A"])
 
 	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=v2\n")
-	err := Pull(&bytes.Buffer{}, f["WT_A"], "", "", false, false)
+	err := Pull(&bytes.Buffer{}, f["WT_A"], "", "", SyncOpts{})
 
 	const want = "local has changes not in the vault; run 'envkeep push' first"
 	if err == nil || err.Error() != want {
@@ -203,7 +203,7 @@ func TestPullConflictRefusalMessageUnchangedAndClassifiable(t *testing.T) {
 	mustPush(t, f["WT_A"]) // vault -> v2
 
 	writeFile(t, filepath.Join(f["WT_B"], ".env"), "KEY=v3\n") // wt-b diverges too
-	err := Pull(&bytes.Buffer{}, f["WT_B"], "", "", false, false)
+	err := Pull(&bytes.Buffer{}, f["WT_B"], "", "", SyncOpts{})
 
 	const want = "conflict: vault and local changed the same key(s); resolve, then pull"
 	if err == nil || err.Error() != want {

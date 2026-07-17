@@ -16,7 +16,7 @@ import (
 func pushEnv(t *testing.T, cwd, env string, create bool) string {
 	t.Helper()
 	var b bytes.Buffer
-	if err := Push(&b, cwd, "", env, create, false, false); err != nil {
+	if err := Push(&b, cwd, "", env, PushOpts{SyncOpts: SyncOpts{Create: create}}); err != nil {
 		t.Fatalf("push --env %s (create=%v): %v\n%s", env, create, err, b.String())
 	}
 	return b.String()
@@ -58,7 +58,7 @@ func TestPerEnvironmentValues(t *testing.T) {
 func TestUnknownEnvironmentRefusedWithoutCreate(t *testing.T) {
 	f := fixture(t)
 	writeFile(t, filepath.Join(f["WT_A"], ".env"), "K=1\n")
-	err := Push(&bytes.Buffer{}, f["WT_A"], "", "ghost", false, false, false)
+	err := Push(&bytes.Buffer{}, f["WT_A"], "", "ghost", PushOpts{})
 	if err == nil || !strings.Contains(err.Error(), "unknown environment") {
 		t.Errorf("Push --env ghost error = %v, want an 'unknown environment' refusal", err)
 	}
@@ -75,7 +75,7 @@ func TestSwitchEnvironmentRepoints(t *testing.T) {
 	pushEnv(t, f["WT_A"], "homo", true) // wt-a now active on homo
 
 	var b bytes.Buffer
-	if err := Pull(&b, f["WT_A"], "", "prod", false, false); err != nil {
+	if err := Pull(&b, f["WT_A"], "", "prod", SyncOpts{}); err != nil {
 		t.Fatalf("re-point to prod: %v\n%s", err, b.String())
 	}
 	got, err := os.ReadFile(filepath.Join(f["WT_A"], ".env"))
@@ -101,7 +101,7 @@ func TestRepointGuardsUnpushedEdits(t *testing.T) {
 	mustCmdEnv(t, f["WT_A"], "prod")
 	writeFile(t, filepath.Join(f["WT_A"], ".env"), "DB=prod-EDITED\n")
 
-	err := Pull(&bytes.Buffer{}, f["WT_A"], "", "homo", false, false)
+	err := Pull(&bytes.Buffer{}, f["WT_A"], "", "homo", SyncOpts{})
 	if err == nil || !strings.Contains(err.Error(), "not pushed") {
 		t.Errorf("switch with unpushed edits: err = %v, want a refusal (E4)", err)
 	}
@@ -123,7 +123,7 @@ func TestRepointRefusalMessageUnchangedAndClassifiable(t *testing.T) {
 	mustCmdEnv(t, f["WT_A"], "prod")
 	writeFile(t, filepath.Join(f["WT_A"], ".env"), "DB=prod-EDITED\n")
 
-	err := Pull(&bytes.Buffer{}, f["WT_A"], "", "homo", false, false)
+	err := Pull(&bytes.Buffer{}, f["WT_A"], "", "homo", SyncOpts{})
 	const want = `local has changes not pushed to environment "prod"; push or discard before switching to "homo"`
 	if err == nil || err.Error() != want {
 		t.Fatalf("Pull error = %v, want byte-identical %q", err, want)
@@ -135,7 +135,7 @@ func TestRepointRefusalMessageUnchangedAndClassifiable(t *testing.T) {
 
 func mustCmdEnv(t *testing.T, cwd, env string) {
 	t.Helper()
-	if err := Pull(&bytes.Buffer{}, cwd, "", env, false, false); err != nil {
+	if err := Pull(&bytes.Buffer{}, cwd, "", env, SyncOpts{}); err != nil {
 		t.Fatalf("pull --env %s: %v", env, err)
 	}
 }
@@ -210,7 +210,7 @@ func TestCrossEnvPushRefusesOverwriteWithoutForce(t *testing.T) {
 	pushEnv(t, f["WT_B"], "homo", true) // homo holds DB=homo-db
 
 	var b bytes.Buffer
-	err := Push(&b, f["WT_A"], "", "homo", false, false, false)
+	err := Push(&b, f["WT_A"], "", "homo", PushOpts{})
 	if err == nil || !strings.Contains(err.Error(), "--force") {
 		t.Fatalf("cross-env push = %v, want refusal mentioning --force", err)
 	}
@@ -221,7 +221,7 @@ func TestCrossEnvPushRefusesOverwriteWithoutForce(t *testing.T) {
 		t.Errorf("homo DB = %q, want homo-db untouched after refusal", got)
 	}
 
-	if err := Push(&bytes.Buffer{}, f["WT_A"], "", "homo", false, false, true); err != nil {
+	if err := Push(&bytes.Buffer{}, f["WT_A"], "", "homo", PushOpts{Force: true}); err != nil {
 		t.Fatalf("push --force: %v", err)
 	}
 	if got := readEnvVault(t, common, "homo")["DB"]; got != "prod-db" {
@@ -240,7 +240,7 @@ func TestCrossEnvPushAddOnlyNeedsNoForce(t *testing.T) {
 	pushEnv(t, f["WT_B"], "homo", true)
 
 	writeFile(t, filepath.Join(f["WT_A"], ".env"), "NEW=1\n")
-	if err := Push(&bytes.Buffer{}, f["WT_A"], "", "homo", false, false, false); err != nil {
+	if err := Push(&bytes.Buffer{}, f["WT_A"], "", "homo", PushOpts{}); err != nil {
 		t.Fatalf("add-only cross-env push: %v", err)
 	}
 	homo := readEnvVault(t, common, "homo")

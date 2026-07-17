@@ -36,18 +36,18 @@ func refused(err error) error { return refusal{err} }
 // --create (D26). It refuses when the local env holds changes not yet pushed
 // (D5), and — when switching to a different env (a re-point) — refuses to
 // discard unpushed edits in the worktree's current env (E4).
-func Pull(w io.Writer, cwd, envFileFlag, envFlag string, create, dryRun bool) error {
+func Pull(w io.Writer, cwd, envFileFlag, envFlag string, opts SyncOpts) error {
 	ctx, err := Resolve(cwd, envFileFlag, envFlag)
 	if err != nil {
 		return err
 	}
-	return pullResolved(w, ctx, create, dryRun)
+	return pull(ctx, w, opts)
 }
 
-// pullResolved is Pull's body over an already-resolved Context, letting a
-// caller that already resolved the repo (Use) skip a second git rev-parse +
+// pull is Pull's body over an already-resolved Context, letting a caller that
+// already resolved the repo (Use, UseCascade) skip a second git rev-parse +
 // config.Load (D25's resolution is otherwise paid twice per `use`).
-func pullResolved(w io.Writer, ctx *Context, create, dryRun bool) error {
+func pull(ctx *Context, w io.Writer, opts SyncOpts) error {
 	p := &printer{w: w}
 
 	marker, hasMarker, err := state.Load(ctx.self.gitDir)
@@ -55,7 +55,7 @@ func pullResolved(w io.Writer, ctx *Context, create, dryRun bool) error {
 		return err
 	}
 	activeEnv := ctx.resolveEnv(marker.Env)
-	if err := ctx.ensureTargetEnv(activeEnv, create, dryRun); err != nil {
+	if err := ctx.ensureTargetEnv(activeEnv, opts); err != nil {
 		return err
 	}
 
@@ -63,7 +63,7 @@ func pullResolved(w io.Writer, ctx *Context, create, dryRun bool) error {
 	if err != nil {
 		return err
 	}
-	if !vaultExists && !create {
+	if !vaultExists && !opts.Create {
 		return errors.New("no vault yet; run 'envkeep push' first")
 	}
 	overrideEnv, err := readEnvOrEmpty(ctx.self.overridePath)
@@ -130,7 +130,7 @@ func pullResolved(w io.Writer, ctx *Context, create, dryRun bool) error {
 		return p.err
 	}
 	printDelta(p, ctx.EnvFile, d)
-	if dryRun {
+	if opts.DryRun {
 		p.printf("(dry run — %s not written)\n", ctx.EnvFile)
 		return p.err
 	}

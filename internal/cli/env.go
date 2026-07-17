@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 
 	"github.com/carvalhosauro/envkeep/internal/env"
 	"github.com/carvalhosauro/envkeep/internal/git"
@@ -37,43 +38,37 @@ func Envs(w io.Writer, cwd string) error {
 	return p.err
 }
 
-// Use switches the current worktree to envName. Switching to an existing env
+// Use switches the current worktree to ctx.EnvFlag. Switching to an existing env
 // pulls its content. With create, a NON-EXISTENT env is created from the current
 // worktree's env — like `git checkout -b`: the new vault is snapshotted from local
 // content and the worktree re-points to it, leaving local intact (push-create path,
-// D26). An existing env with -c just switches.
-func Use(w io.Writer, cwd, envName string, create, dryRun bool) error {
-	ctx, err := Resolve(cwd, "", envName)
-	if err != nil {
-		return err
+// D26). An existing env with -c just switches. ctx must come from Resolve with the
+// target environment in envFlag (as `use <env>` does).
+func Use(ctx *Context, w io.Writer, create, dryRun bool) error {
+	if create && !vault.EnvExists(ctx.CommonDir, ctx.EnvFlag) {
+		return push(ctx, w, PushOpts{SyncOpts: SyncOpts{Create: true, DryRun: dryRun}}) // checkout -b: create from current
 	}
-	if create && !vault.EnvExists(ctx.CommonDir, env.Name(envName)) {
-		return pushResolved(w, ctx, true, dryRun, false) // checkout -b: create from current
-	}
-	return pullResolved(w, ctx, create, dryRun) // switch to existing
+	return pull(ctx, w, SyncOpts{Create: create, DryRun: dryRun}) // switch to existing
 }
 
-// UseCascade switches every worktree in the repo to envName — the opt-in
+// UseCascade switches every worktree in the repo to ctx.EnvFlag — the opt-in
 // cascade fan-out (D28) — reusing Pull's guards per worktree instead of
 // re-implementing conflict/ahead detection. A worktree whose current
 // environment is ahead, conflicted, or holds edits the re-point guard refuses
 // to discard (E4) is skipped and reported rather than clobbered; every other
 // worktree is switched. dryRun previews without writing anything. An error
-// from Pull that is not a refusal (errors.Is(err, ErrRefused)) — a genuine
+// from pull that is not a refusal (errors.Is(err, ErrRefused)) — a genuine
 // I/O or resolve failure — aborts the whole cascade immediately: the summary
 // of worktrees already switched or skipped before the failure is still
 // flushed to w, and the returned error is wrapped with the failing worktree's
 // path (via %w, so errors.Is/As still see the underlying error) for context.
-func UseCascade(w io.Writer, cwd, envName string, dryRun bool) error {
-	ctx, err := Resolve(cwd, "", "")
-	if err != nil {
-		return err
-	}
-	e := env.Name(envName)
+// ctx must come from Resolve with the target environment in envFlag.
+func UseCascade(ctx *Context, w io.Writer, dryRun bool) error {
+	e := ctx.EnvFlag
 	if !vault.EnvExists(ctx.CommonDir, e) {
-		return fmt.Errorf("unknown environment %q", envName)
+		return fmt.Errorf("unknown environment %q", e.String())
 	}
-	wts, err := git.Worktrees(cwd)
+	wts, err := git.Worktrees(filepath.Dir(ctx.self.localPath))
 	if err != nil {
 		return err
 	}
@@ -85,6 +80,7 @@ func UseCascade(w io.Writer, cwd, envName string, dryRun bool) error {
 	if dryRun {
 		verb = "would switch"
 	}
+	envName := e.String()
 	// printSummary writes the "applied"/"skipped" lines collected so far. It is
 	// shared by the normal end-of-loop report and by an abort mid-loop: a
 	// genuine (non-refusal) error must not discard the report of worktrees
@@ -105,8 +101,17 @@ func UseCascade(w io.Writer, cwd, envName string, dryRun bool) error {
 		if wt.Bare {
 			continue
 		}
+		wtCtx, err := ctx.ForWorktree(wt.Path)
+		if err != nil {
+			flushErr := printSummary()
+			aborted := fmt.Errorf("%s: %w", wt.Path, err)
+			if flushErr != nil {
+				return errors.Join(flushErr, aborted)
+			}
+			return aborted
+		}
 		var buf bytes.Buffer
-		switch err := Pull(&buf, wt.Path, "", envName, false, dryRun); {
+		switch err := pull(wtCtx, &buf, SyncOpts{DryRun: dryRun}); {
 		case err == nil:
 			applied = append(applied, wt.Path)
 		case errors.Is(err, ErrRefused):

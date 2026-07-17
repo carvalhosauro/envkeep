@@ -52,6 +52,18 @@ type Context struct {
 	self worktreePaths
 }
 
+// ForWorktree returns a copy of c with self repointed at toplevel. The Repo
+// pointer is shared — vault paths, env resolution inputs, and config are
+// unchanged — so a caller that already Resolve'd once (UseCascade, D28) can run
+// pull/push per worktree without paying git rev-parse + config.Load again.
+func (c *Context) ForWorktree(toplevel string) (*Context, error) {
+	self, err := c.worktreeAt(toplevel)
+	if err != nil {
+		return nil, err
+	}
+	return &Context{Repo: c.Repo, self: self}, nil
+}
+
 // Resolve discovers the repo from cwd and builds the command context. envFileFlag
 // (may be "") takes precedence over the repo config, which defaults to .env.
 // envFlag (may be "") is the raw --env value, resolved against the marker and
@@ -158,17 +170,17 @@ func (r *Repo) worktreeAt(toplevel string) (worktreePaths, error) {
 // if it already exists, nil; if it does not exist and create is false, an
 // "unknown environment" error; if create is true, the name is validated and
 // (unless dryRun) the env is adopted.
-func (r *Repo) ensureTargetEnv(e env.Name, create, dryRun bool) error {
+func (r *Repo) ensureTargetEnv(e env.Name, opts SyncOpts) error {
 	if e.IsUnnamed() || vault.EnvExists(r.CommonDir, e) {
 		return nil
 	}
-	if !create {
+	if !opts.Create {
 		return fmt.Errorf("unknown environment %q; create it with --create (or --env with an existing environment)", e.String())
 	}
 	if err := e.Validate(); err != nil {
 		return err
 	}
-	if dryRun {
+	if opts.DryRun {
 		return nil // preview only — never mutate on a dry run
 	}
 	return r.adoptEnv(e)
