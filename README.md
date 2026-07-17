@@ -5,15 +5,19 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/carvalhosauro/envkeep)](https://goreportcard.com/report/github.com/carvalhosauro/envkeep)
 [![license](https://img.shields.io/github/license/carvalhosauro/envkeep)](LICENSE)
 
-Keep `.env` files in sync across the git worktrees of one repository — and
-switch each worktree between named environments (`dev`, `staging`, …).
+**`git checkout -b` for your `.env` files.** Keep `.env` in sync across every
+worktree of a repo, and switch each worktree between named environments
+(`dev`, `staging`, …).
+
+Running one worktree per AI coding agent? envkeep keeps every agent's `.env`
+in sync — and gives each worktree its own port via overrides.
+
+![envkeep demo](demo/demo.gif)
 
 > Status: **v1 (MVP) complete** — `status`/`push`/`pull`/`check`, named
 > environments (`envs`/`use`/`rm`) and the shell hook work end-to-end. See
 > [`docs/STATUS.md`](docs/STATUS.md) for detail. AI agents: start at
 > [`AGENTS.md`](AGENTS.md).
-
-![envkeep demo](demo/demo.gif)
 
 ## The problem
 
@@ -94,20 +98,6 @@ go install github.com/carvalhosauro/envkeep/cmd/envkeep@latest
 
 `envkeep version` reports the installed version. From a clone (development):
 `make install` (version stamped from `git describe`) or `make build` → `./bin`.
-
-## Releasing
-
-Releases are automated with [goreleaser](https://goreleaser.com). Push a
-semver tag and GitHub Actions builds the cross-platform binaries and publishes
-the Release:
-
-```sh
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-Locally: `make release-check` validates the config; `make snapshot` dry-runs a
-build without publishing.
 
 ## Commands
 
@@ -208,3 +198,17 @@ support, team/remote sync, and integrations (Vault/Doppler/1Password) are **out
 of scope for v1**. Each is gated behind a concrete trigger recorded in the docs.
 This is personal, single-machine tooling; it does not get built for a team that
 does not exist yet.
+
+## Releasing
+
+Releases are automated with [goreleaser](https://goreleaser.com). Push a
+semver tag and GitHub Actions builds the cross-platform binaries and publishes
+the Release:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Locally: `make release-check` validates the config; `make snapshot` dry-runs a
+build without publishing.

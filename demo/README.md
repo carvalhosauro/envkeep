@@ -37,6 +37,15 @@ committed to the repo (the README references them by relative path).
 | `drift.tape` | edit → push → pull between worktrees | The problem |
 | `hook.tape` | cd into a drifted worktree, hook warns | Shell integration |
 
+## Social preview
+
+`social-preview.png` (1280×640) is the image for GitHub's **Settings → Social
+preview** — it is what renders when the repo link is shared on X/HN/Slack. It
+is composed with ImageMagick from a frame of `demo.gif` (extracted at ~55% of
+its duration with ffmpeg) plus the README tagline in Fira Code. Re-generate it
+after re-recording `demo.tape` if the frame no longer matches. Uploading it in
+the repo settings is manual — GitHub has no API for it.
+
 ## Editing a tape
 
 Tapes are plain [vhs syntax](https://github.com/charmbracelet/vhs#vhs-command-reference).
