@@ -10,12 +10,17 @@ is, see [`DECISIONS.md`](DECISIONS.md) (entries referenced as `D#`).
   **common dir** (`git rev-parse --path-format=absolute --git-common-dir`,
   resolved absolute — see D13). This holds for normal repos, linked worktrees,
   and bare-repo `.bare/` layouts alike.
-- Shared env values live in a flat **vault** file inside that common dir (D2,
-  D3).
-- Each worktree records a small **base marker** in its own per-worktree gitdir,
-  enabling 3-way conflict detection and doubling as the cache (D5).
-- The effective local file is composed from the vault and a per-worktree
-  override (D9): **effective `.env` = vault ⊕ override**.
+- Shared env values live in flat **vault** files inside that common dir (D2,
+  D3). The vault holds one file per named **environment** (`dev`, `staging`, …
+  — D23); each environment's vault is a complete, self-contained value set
+  (no shared/inherited layer in v1, D24). A repo that never adopts
+  environments keeps the single legacy flat vault (D27).
+- Each worktree records a small **base marker** in its own per-worktree gitdir:
+  its **active environment** (the analog of a git worktree's HEAD, D25) plus
+  the base for 3-way conflict detection, doubling as the cache (D5).
+- The effective local file is composed from the active environment's vault and
+  a single, environment-agnostic per-worktree override (D9, D30):
+  **effective `.env` = env-vault ⊕ override**.
 
 ## On-disk layout
 
@@ -23,11 +28,17 @@ Shared, in the common dir (never tracked by git, since it's inside `.git/`):
 
 ```
 <git-common-dir>/envkeep/
-  config                 # repo config, KEY=VALUE. e.g. env_file=.env.local
+  config                 # repo config, KEY=VALUE: env_file (D12), default_env (D25), cascade (D28)
   vault/
-    .env                 # the vault, named after the tracked file (D12)
-    .env.local           # (only if that's the tracked filename)
+    .env                 # legacy flat vault — a repo that never adopted environments (D27)
+    dev/.env             # one directory per named environment: vault/<env>/<envFilename> (D23)
+    staging/.env
 ```
+
+The environment set is discovered live from the `vault/*/` directories — the
+filesystem is the registry, as `.git/refs/heads/` is for branches (D26). On the
+first environment creation the legacy flat vault is migrated once into
+`vault/<env>/` (D27).
 
 Per worktree, in its own gitdir (`git rev-parse --git-dir`):
 
@@ -36,12 +47,17 @@ Per worktree, in its own gitdir (`git rev-parse --git-dir`):
 .git/worktrees/<name>/envkeep.base       # each linked worktree
 ```
 
-`envkeep.base` contents (flat, parseable with the same parser):
+`envkeep.base` is a small JSON file (the base is stored in full, not hashed —
+the 3-way check needs actual values to tell a real per-key conflict from a
+mergeable divergence):
 
-```
-vault_hash=<hash of vault content at this worktree's last sync>
-local_mtime=<.env mtime at last check>
-vault_mtime=<vault mtime at last check>
+```json
+{
+  "env": "dev",                  // active environment; omitted = legacy/unnamed (D25, D27)
+  "local_mtime": 1710000000000,  // .env mtime (unix ns) at last check — the cache
+  "vault_mtime": 1710000000000,  // active env's vault mtime at last check
+  "base": {"KEY": "value"}       // full vault snapshot at this worktree's last sync
+}
 ```
 
 In each worktree's working tree:
@@ -54,50 +70,58 @@ In each worktree's working tree:
 ## Component layout (Go packages)
 
 ```
-cmd/envkeep/main.go     # entrypoint: subcommand dispatch (stdlib flag, D6)
+cmd/envkeep/main.go     # entrypoint: os.Exit(cli.Execute()) — thin dispatch, excluded from coverage (D21, D29, D31)
 internal/buildinfo/     # build-time version metadata
-internal/config/        # per-repo env_file config (D12)
+internal/config/        # per-repo config: env_file (D12), default_env (D25), cascade (D28)
 internal/git/           # common-dir (absolute), worktree list, per-worktree gitdir
-internal/envfile/       # order/comment-preserving parser, merge, 3-way diff
-internal/vault/         # Store interface (D17) + flatfile implementation
-internal/state/         # base-marker read/write (conflict + cache)
+internal/env/           # env.Name: environment naming, validation, reserved names (D26)
+internal/envfile/       # order/comment-preserving parser, merge, 3-way classify
+internal/vault/         # Store interface (D17) + per-env flatfile layout, live env discovery, legacy migration (D23, D26, D27)
+internal/state/         # base-marker (JSON) read/write: active env + base + mtime cache
 internal/fsutil/        # shared atomic file write
-internal/cli/           # status / push / pull (wires everything together)
+internal/cli/           # cobra command tree (D29, D31) + logic: init/status/push/pull/check/hook/envs/use/rm/config
 internal/hook/          # emits the zsh chpwd / bash cd-trap snippet (D7)
 scripts/mkfixture.sh    # golden-set fixture generator (D18)
 ```
 
-The entrypoint lives at `cmd/envkeep/main.go` (standard Go layout), and the
-command logic is the `internal/cli` package — kept distinct in name from the
-`cmd/` binary directory to avoid a "cmd" overload.
+The entrypoint lives at `cmd/envkeep/main.go` (standard Go layout) and shrinks
+to `os.Exit(cli.Execute())`: the `*cobra.Command` definitions live in
+`internal/cli` next to the command logic, so the command surface stays tested
+and coverage-counted while `cmd/envkeep` remains trivial dispatch (D31). The
+CLI is a docker-style hybrid: environment operations are top-level verbs
+(`use`, `envs`, `rm`); only config is a noun group (`config get|set|…`, D29).
 
-## VaultStore interface (D17)
+## Store interface (D17)
 
 ```go
-type VaultStore interface {
-    Read() (map[string]string, error)
-    Write(map[string]string) error
+type Store interface {
+    Read() (envfile.Env, error)
+    Write(env envfile.Env) error
 }
 ```
 
-v1 ships one implementation: local flat file. Encrypted-file and remote backends
-(deferred, D14/D16) become new implementations of these two methods — not a
-rewrite.
+v1 ships one implementation: local flat file, bound to one environment's vault
+path. Encrypted-file and remote backends (deferred, D14/D16) become new
+implementations of these two methods — not a rewrite.
 
-## The composition rule (D9)
+## The composition rule (D9, D23, D30)
 
 There is exactly one rule, and push/pull are symmetric around it:
 
 ```
-effective .env = vault ⊕ override      (override keys win)
+effective .env = env-vault ⊕ override      (override keys win)
 ```
 
-- **pull:** write vault values into `.env`, then re-apply override keys on top.
-  Override-managed keys always keep their worktree-local values.
+- **pull:** write the active environment's vault values into `.env`, then
+  re-apply override keys on top. Override-managed keys always keep their
+  worktree-local values.
 - **push:** take local `.env`, **strip** override keys, then merge the rest into
-  the vault. Worktree-specific values (e.g. `PORT`) never enter shared truth.
+  the active environment's vault. Worktree-specific values (e.g. `PORT`) never
+  enter shared truth.
 
 Override keys are defined by their presence in the worktree's override file.
+The override is a single file applied identically under every environment —
+machine-local values are about the worktree, not the deployment target (D30).
 
 ## Conflict model (D5)
 
@@ -105,20 +129,25 @@ State is decided by a 3-way comparison against the **base** (vault content at
 this worktree's last sync). Comparison is on the semantic key/value set
 (order- and comment-insensitive); writing still preserves layout (D11).
 
-| local vs base | vault vs base | State        | Meaning / action                          |
-|---------------|---------------|--------------|-------------------------------------------|
-| same          | same          | **clean**    | nothing to do                             |
-| changed       | same          | **ahead**    | `push` fast-forwards the vault            |
-| same          | changed       | **behind**   | `pull` fast-forwards the local `.env`     |
-| changed       | changed       | **conflict** | refuse auto-merge; show 3-way; manual fix |
+| local vs base | vault vs base | State        | Meaning / action                            |
+|---------------|---------------|--------------|---------------------------------------------|
+| same          | same          | **clean**    | nothing to do                               |
+| changed       | same          | **ahead**    | `push` fast-forwards the vault              |
+| same          | changed       | **behind**   | `pull` fast-forwards the local `.env`       |
+| changed       | changed, disjoint keys | **diverged** | both moved on different keys; `push` union-merges safely (D8) |
+| changed       | changed, same key(s)   | **conflict** | refuse auto-merge; show 3-way; manual fix |
 
-Plus two states outside the table:
+Plus states outside the table (no base to compare against):
 - **absent** — no local `.env` exists yet.
+- **unsynced** — local `.env` exists but the worktree has no marker (never
+  pushed/pulled), or its environment's vault does not exist yet.
 - **fresh** — no vault exists yet (first use in the repo).
 
-**Conflict UX (v1):** detect → refuse → show per-key 3-way (`base | local |
-vault`) → user resolves with `push --force`, `pull --force`, or interactive
-per-key pick. No automatic merge in v1 — detection + refusal is the safety.
+**Conflict UX (v1):** detect → refuse → show the conflicting keys' 3-way
+(`base | local | vault`) → the user edits the local file (or pulls a fresh
+copy) and pushes again. No automatic merge in v1 — detection + refusal is the
+safety. (`push --force` exists only for the cross-env push, where no 3-way
+base exists; it is not a conflict override.)
 
 ## Cache: two-layer skip (D5, D7)
 
