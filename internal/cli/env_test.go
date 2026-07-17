@@ -248,3 +248,24 @@ func TestCrossEnvPushAddOnlyNeedsNoForce(t *testing.T) {
 		t.Errorf("homo = %v, want NEW=1 merged and OTHER=x kept", homo)
 	}
 }
+
+// A default_env pre-set before any environment exists necessarily dangles;
+// first-env adoption must re-point it at the env actually created (#21).
+func TestFirstEnvAdoptionOverridesDanglingDefaultEnv(t *testing.T) {
+	f := fixture(t)
+	common := f["COMMON_DIR"]
+	if err := config.Set(common, "default_env", "prod"); err != nil {
+		t.Fatal(err)
+	}
+
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "K=1\n")
+	pushEnv(t, f["WT_A"], "homo", true)
+
+	cfg, err := config.Load(common)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DefaultEnv != env.Name("homo") {
+		t.Errorf("default_env = %q, want homo (pre-set prod dangles)", cfg.DefaultEnv)
+	}
+}
