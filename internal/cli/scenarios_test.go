@@ -161,3 +161,26 @@ func TestConflictOutputRedactsValues(t *testing.T) {
 		t.Errorf("conflict output = %q, want key name without values", out)
 	}
 }
+
+// pull rewrites a group/world-readable local env at 0600 instead of
+// preserving the wider mode (#23).
+func TestPullTightensLocalEnvPerm(t *testing.T) {
+	f := fixture(t)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=v1\n")
+	mustPush(t, f["WT_A"])
+
+	local := filepath.Join(f["WT_B"], ".env")
+	writeFile(t, local, "")
+	if err := os.Chmod(local, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustPull(t, f["WT_B"])
+
+	fi, err := os.Stat(local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fi.Mode().Perm(); got != 0o600 {
+		t.Errorf("pulled .env mode = %o, want 0600", got)
+	}
+}
