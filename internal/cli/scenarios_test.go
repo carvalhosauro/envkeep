@@ -19,7 +19,7 @@ func TestPushDryRunDoesNotWriteVault(t *testing.T) {
 	f := fixture(t)
 	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=value\n")
 
-	out, err := run(t, func(b *bytes.Buffer) error { return Push(b, f["WT_A"], "", "", false, true) })
+	out, err := run(t, func(b *bytes.Buffer) error { return Push(b, f["WT_A"], "", "", false, true, false) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestPushRefusesWhenBehind(t *testing.T) {
 	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=v2\n")
 	mustPush(t, f["WT_A"]) // vault -> v2; wt-b now behind
 
-	err := Push(&bytes.Buffer{}, f["WT_B"], "", "", false, false)
+	err := Push(&bytes.Buffer{}, f["WT_B"], "", "", false, false, false)
 	if err == nil || !strings.Contains(err.Error(), "pull") {
 		t.Errorf("push when behind = %v, want refusal mentioning pull", err)
 	}
@@ -59,7 +59,7 @@ func TestPushRefusesWhenBehind(t *testing.T) {
 
 func TestPushNoLocalEnv(t *testing.T) {
 	f := fixture(t)
-	err := Push(&bytes.Buffer{}, f["WT_A"], "", "", false, false)
+	err := Push(&bytes.Buffer{}, f["WT_A"], "", "", false, false, false)
 	if err == nil || !strings.Contains(err.Error(), "no .env") {
 		t.Errorf("push without .env = %v, want 'no .env' error", err)
 	}

@@ -123,7 +123,7 @@ func newStatusCmd() *cobra.Command {
 
 func newPushCmd() *cobra.Command {
 	var file, envName string
-	var create, dry bool
+	var create, dry, force bool
 	cmd := &cobra.Command{
 		Use:   "push",
 		Short: "merge this worktree's env into the environment's vault",
@@ -133,10 +133,11 @@ func newPushCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return Push(cmd.OutOrStdout(), cwd, file, envName, create, dry)
+			return Push(cmd.OutOrStdout(), cwd, file, envName, create, dry, force)
 		},
 	}
 	addSyncFlags(cmd, &file, &envName, &create, &dry)
+	cmd.Flags().BoolVar(&force, "force", false, "on a cross-env push, overwrite keys that differ in the target environment")
 	return cmd
 }
 

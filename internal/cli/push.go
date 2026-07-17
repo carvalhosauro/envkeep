@@ -14,19 +14,22 @@ import (
 // vault-only keys are kept — so a worktree can never delete a key another
 // worktree added (D8). The environment is resolved by --env > marker >
 // default_env (D25); targeting a non-existent env needs --create (D26). It
-// refuses when the vault holds changes the local env would clobber (D5).
-func Push(w io.Writer, cwd, envFileFlag, envFlag string, create, dryRun bool) error {
+// refuses when the vault holds changes the local env would clobber (D5), and —
+// when pushing to an env other than the worktree's own (a cross-env push,
+// where no 3-way base exists) — refuses to overwrite keys whose value differs
+// in the target vault unless force is set (#20).
+func Push(w io.Writer, cwd, envFileFlag, envFlag string, create, dryRun, force bool) error {
 	ctx, err := Resolve(cwd, envFileFlag, envFlag)
 	if err != nil {
 		return err
 	}
-	return pushResolved(w, ctx, create, dryRun)
+	return pushResolved(w, ctx, create, dryRun, force)
 }
 
 // pushResolved is Push's body over an already-resolved Context, letting a
 // caller that already resolved the repo (Use) skip a second git rev-parse +
 // config.Load (D25's resolution is otherwise paid twice per `use`).
-func pushResolved(w io.Writer, ctx *Context, create, dryRun bool) error {
+func pushResolved(w io.Writer, ctx *Context, create, dryRun, force bool) error {
 	p := &printer{w: w}
 
 	localShared, ok, err := readShared(ctx.self.localPath, ctx.self.overridePath)
@@ -93,6 +96,19 @@ func pushResolved(w io.Writer, ctx *Context, create, dryRun bool) error {
 		}
 		p.printf("already in sync; nothing to push\n")
 		return p.err
+	}
+	// Cross-env push (marker points at a different env): there is no 3-way base
+	// against the target vault, so a differing key can't be told apart from a
+	// clobber. Never silently overwrite another env's values (#20).
+	if hasMarker && !sameEnv && !force && len(d.Changed) > 0 {
+		p.printf("keys that differ in environment %q:\n", activeEnv)
+		for _, c := range d.Changed {
+			p.printf("  %s\n", c.Key)
+		}
+		if p.err != nil {
+			return p.err
+		}
+		return fmt.Errorf("cross-env push would overwrite key(s) in %q; re-run with --force to overwrite", activeEnv)
 	}
 	printDelta(p, "vault", d)
 	if dryRun {
