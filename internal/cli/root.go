@@ -272,6 +272,20 @@ func newUseCmd() *cobra.Command {
 				doCascade = ctx.Cascade
 			}
 			if doCascade {
+				// A brand-new env can't be cascaded into existence: the fan-out
+				// only switches worktrees to an existing env. So with -c on a
+				// not-yet-created env, create it first (checkout -b from this
+				// worktree), then fan the switch out. Without this the create
+				// flag was dropped and `use -c <new>` under a cascade default
+				// failed with "unknown environment".
+				if create && !vault.EnvExists(ctx.CommonDir, ctx.EnvFlag) {
+					if err := Use(ctx, cmd.OutOrStdout(), true, dry); err != nil {
+						return err
+					}
+					if dry {
+						return nil // nothing created on a dry run — nothing to fan out
+					}
+				}
 				return UseCascade(ctx, cmd.OutOrStdout(), dry)
 			}
 			// use == re-point the current worktree to args[0]. Use dispatches to

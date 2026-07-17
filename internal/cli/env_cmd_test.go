@@ -401,6 +401,59 @@ func TestUseHonorsConfigCascadeDefault(t *testing.T) {
 	}
 }
 
+// TestUseCreateCascadeCreatesNewEnvThenFansOut verifies `use -c <new>` still
+// creates the environment (checkout -b from the invoking worktree) when the
+// repo's cascade default is on, then fans the switch out to every worktree —
+// rather than routing straight to the fan-out, which ignored -c and refused
+// the not-yet-created env with a bare "unknown environment".
+func TestUseCreateCascadeCreatesNewEnvThenFansOut(t *testing.T) {
+	f := fixture(t)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "DB=prod\n")
+	t.Chdir(f["WT_A"])
+
+	cfg, err := config.Load(f["COMMON_DIR"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Cascade = true // opt the repo into cascade-by-default
+	if err := config.Save(f["COMMON_DIR"], cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := execRoot(t, "use", "-c", "prod"); err != nil { // no --cascade flag
+		t.Fatalf("use -c prod under cascade default: %v", err)
+	}
+
+	// prod was created from wt-a's local content (checkout -b)...
+	prod := readEnvVault(t, f["COMMON_DIR"], "prod")
+	if prod["DB"] != "prod" {
+		t.Errorf("prod vault = %v, want a snapshot of wt-a local (DB=prod)", prod)
+	}
+	// ...and the cascade then reached wt-b.
+	got, _ := os.ReadFile(filepath.Join(f["WT_B"], ".env"))
+	if !strings.Contains(string(got), "DB=prod") {
+		t.Errorf("cascade did not switch wt-b to the new env:\n%s", got)
+	}
+}
+
+// TestUseCreateCascadeDryRunCreatesNothing verifies `use -c <new> --cascade
+// --dry-run` previews without creating the env or touching any worktree.
+func TestUseCreateCascadeDryRunCreatesNothing(t *testing.T) {
+	f := fixture(t)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "DB=prod\n")
+	t.Chdir(f["WT_A"])
+
+	if _, err := execRoot(t, "use", "-c", "prod", "--cascade", "--dry-run"); err != nil {
+		t.Fatalf("use -c prod --cascade --dry-run: %v", err)
+	}
+	if vault.EnvExists(f["COMMON_DIR"], env.Name("prod")) {
+		t.Error("dry-run should not have created prod")
+	}
+	if _, err := os.Stat(filepath.Join(f["WT_B"], ".env")); !os.IsNotExist(err) {
+		t.Errorf("dry-run should not have written wt-b's .env, stat err = %v", err)
+	}
+}
+
 // TestConfigSetGet verifies `config set` persists a value that `config get`
 // then reads back.
 func TestConfigSetGet(t *testing.T) {
