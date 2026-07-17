@@ -336,3 +336,15 @@ Still open:
   an already-existing env; `Use` resolves the repo twice (once for the exists
   check, once inside Push/Pull) — negligible for an interactive, non-per-prompt
   command; no `use -c --dry-run` test.
+- **2026-07-16 · Refactor push/pull params (SyncOpts + Context-first).** Fase A:
+  `SyncOpts` / `PushOpts` replace the trailing bool parameter lists on
+  `Pull`/`Push`; `ensureTargetEnv` takes `SyncOpts`. Fase B: unexported
+  `pull(ctx, w, opts)` / `push(ctx, w, opts)` are Context-first; `Use` calls
+  them directly; `Context.ForWorktree` lets `UseCascade` repoint per worktree
+  without re-running `Resolve`/`git.Locate` per iteration (one resolve with
+  `--env`, then `ForWorktree` + `pull`). Public `Pull`/`Push(w, cwd, …, opts)`
+  wrappers unchanged for cobra/tests. All 162 tests pass.
+- **2026-07-16 · `use`: single Resolve in RunE.** `Use` / `UseCascade` now take
+  `*Context` (pre-resolved with the target env); `newUseCmd` resolves once and
+  reads `ctx.Cascade` for the config default instead of a second `Resolve`.
+  Eliminates the double-resolve follow-up noted after FU1.

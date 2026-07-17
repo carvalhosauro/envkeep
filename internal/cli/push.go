@@ -18,18 +18,18 @@ import (
 // when pushing to an env other than the worktree's own (a cross-env push,
 // where no 3-way base exists) — refuses to overwrite keys whose value differs
 // in the target vault unless force is set (#20).
-func Push(w io.Writer, cwd, envFileFlag, envFlag string, create, dryRun, force bool) error {
+func Push(w io.Writer, cwd, envFileFlag, envFlag string, opts PushOpts) error {
 	ctx, err := Resolve(cwd, envFileFlag, envFlag)
 	if err != nil {
 		return err
 	}
-	return pushResolved(w, ctx, create, dryRun, force)
+	return push(ctx, w, opts)
 }
 
-// pushResolved is Push's body over an already-resolved Context, letting a
-// caller that already resolved the repo (Use) skip a second git rev-parse +
-// config.Load (D25's resolution is otherwise paid twice per `use`).
-func pushResolved(w io.Writer, ctx *Context, create, dryRun, force bool) error {
+// push is Push's body over an already-resolved Context, letting a caller that
+// already resolved the repo (Use) skip a second git rev-parse + config.Load
+// (D25's resolution is otherwise paid twice per `use`).
+func push(ctx *Context, w io.Writer, opts PushOpts) error {
 	p := &printer{w: w}
 
 	localShared, ok, err := readShared(ctx.self.localPath, ctx.self.overridePath)
@@ -45,7 +45,7 @@ func pushResolved(w io.Writer, ctx *Context, create, dryRun, force bool) error {
 		return err
 	}
 	activeEnv := ctx.resolveEnv(marker.Env)
-	if err := ctx.ensureTargetEnv(activeEnv, create, dryRun); err != nil {
+	if err := ctx.ensureTargetEnv(activeEnv, opts.SyncOpts); err != nil {
 		return err
 	}
 
@@ -100,7 +100,7 @@ func pushResolved(w io.Writer, ctx *Context, create, dryRun, force bool) error {
 	// Cross-env push (marker points at a different env): there is no 3-way base
 	// against the target vault, so a differing key can't be told apart from a
 	// clobber. Never silently overwrite another env's values (#20).
-	if hasMarker && !sameEnv && !force && len(d.Changed) > 0 {
+	if hasMarker && !sameEnv && !opts.Force && len(d.Changed) > 0 {
 		p.printf("keys that differ in environment %q:\n", activeEnv)
 		for _, c := range d.Changed {
 			p.printf("  %s\n", c.Key)
@@ -111,7 +111,7 @@ func pushResolved(w io.Writer, ctx *Context, create, dryRun, force bool) error {
 		return fmt.Errorf("cross-env push would overwrite key(s) in %q; re-run with --force to overwrite", activeEnv)
 	}
 	printDelta(p, "vault", d)
-	if dryRun {
+	if opts.DryRun {
 		p.printf("(dry run — vault not written)\n")
 		return p.err
 	}

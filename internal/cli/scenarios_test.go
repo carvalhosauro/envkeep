@@ -19,7 +19,9 @@ func TestPushDryRunDoesNotWriteVault(t *testing.T) {
 	f := fixture(t)
 	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=value\n")
 
-	out, err := run(t, func(b *bytes.Buffer) error { return Push(b, f["WT_A"], "", "", false, true, false) })
+	out, err := run(t, func(b *bytes.Buffer) error {
+		return Push(b, f["WT_A"], "", "", PushOpts{SyncOpts: SyncOpts{DryRun: true}})
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +56,7 @@ func TestPushRefusesWhenBehind(t *testing.T) {
 	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=v2\n")
 	mustPush(t, f["WT_A"]) // vault -> v2; wt-b now behind
 
-	err := Push(&bytes.Buffer{}, f["WT_B"], "", "", false, false, false)
+	err := Push(&bytes.Buffer{}, f["WT_B"], "", "", PushOpts{})
 	if err == nil || !strings.Contains(err.Error(), "pull") {
 		t.Errorf("push when behind = %v, want refusal mentioning pull", err)
 	}
@@ -62,7 +64,7 @@ func TestPushRefusesWhenBehind(t *testing.T) {
 
 func TestPushNoLocalEnv(t *testing.T) {
 	f := fixture(t)
-	err := Push(&bytes.Buffer{}, f["WT_A"], "", "", false, false, false)
+	err := Push(&bytes.Buffer{}, f["WT_A"], "", "", PushOpts{})
 	if err == nil || !strings.Contains(err.Error(), "no .env") {
 		t.Errorf("push without .env = %v, want 'no .env' error", err)
 	}
@@ -73,7 +75,7 @@ func TestPullDryRunDoesNotWriteLocal(t *testing.T) {
 	writeFile(t, filepath.Join(f["WT_A"], ".env"), "KEY=value\n")
 	mustPush(t, f["WT_A"])
 
-	out, err := run(t, func(b *bytes.Buffer) error { return Pull(b, f["WT_B"], "", "", false, true) })
+	out, err := run(t, func(b *bytes.Buffer) error { return Pull(b, f["WT_B"], "", "", SyncOpts{DryRun: true}) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +89,7 @@ func TestPullDryRunDoesNotWriteLocal(t *testing.T) {
 
 func TestPullNoVault(t *testing.T) {
 	f := fixture(t)
-	err := Pull(&bytes.Buffer{}, f["WT_A"], "", "", false, false)
+	err := Pull(&bytes.Buffer{}, f["WT_A"], "", "", SyncOpts{})
 	if err == nil || !strings.Contains(err.Error(), "push") {
 		t.Errorf("pull with no vault = %v, want refusal mentioning push", err)
 	}
@@ -153,7 +155,7 @@ func TestConflictOutputRedactsValues(t *testing.T) {
 	mustPush(t, f["WT_A"]) // vault -> v2
 	writeFile(t, filepath.Join(f["WT_B"], ".env"), "KEY=v3\n")
 
-	out, err := run(t, func(b *bytes.Buffer) error { return Push(b, f["WT_B"], "", "", false, false, false) })
+	out, err := run(t, func(b *bytes.Buffer) error { return Push(b, f["WT_B"], "", "", PushOpts{}) })
 	if err == nil || !strings.Contains(err.Error(), "conflict") {
 		t.Fatalf("push = %v, want conflict refusal", err)
 	}

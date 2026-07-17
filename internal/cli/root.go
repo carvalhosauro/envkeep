@@ -133,7 +133,10 @@ func newPushCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return Push(cmd.OutOrStdout(), cwd, file, envName, create, dry, force)
+			return Push(cmd.OutOrStdout(), cwd, file, envName, PushOpts{
+				SyncOpts: SyncOpts{Create: create, DryRun: dry},
+				Force:    force,
+			})
 		},
 	}
 	addSyncFlags(cmd, &file, &envName, &create, &dry)
@@ -153,7 +156,7 @@ func newPullCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return Pull(cmd.OutOrStdout(), cwd, file, envName, create, dry)
+			return Pull(cmd.OutOrStdout(), cwd, file, envName, SyncOpts{Create: create, DryRun: dry})
 		},
 	}
 	addSyncFlags(cmd, &file, &envName, &create, &dry)
@@ -224,23 +227,23 @@ func newUseCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			ctx, err := Resolve(cwd, "", args[0])
+			if err != nil {
+				return err
+			}
 			doCascade := cascade
 			if !cmd.Flags().Changed("cascade") {
-				// Honor the repo's `cascade=true` config default (D28) when the
-				// flag was not explicitly set on the command line.
-				if ctx, rerr := Resolve(cwd, "", ""); rerr == nil {
-					doCascade = ctx.Cascade
-				}
+				doCascade = ctx.Cascade
 			}
 			if doCascade {
-				return UseCascade(cmd.OutOrStdout(), cwd, args[0], dry)
+				return UseCascade(ctx, cmd.OutOrStdout(), dry)
 			}
 			// use == re-point the current worktree to args[0]. Use dispatches to
 			// Pull for an existing env (re-point + guard unpushed edits, E4) or,
 			// with -c on a non-existent env, to the push-create path — a
 			// `git checkout -b`: snapshot local into the new env's vault and
 			// re-point, leaving local intact (D26, FU1).
-			return Use(cmd.OutOrStdout(), cwd, args[0], create, dry)
+			return Use(ctx, cmd.OutOrStdout(), create, dry)
 		},
 	}
 	cmd.Flags().BoolVarP(&create, "create", "c", false, "create the environment if it does not exist")
