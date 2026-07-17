@@ -79,6 +79,21 @@ func processCwd() (string, error) {
 	return os.Getwd()
 }
 
+// envArgHint rejects positional arguments on commands that select the
+// environment through --env, replacing cobra's bare "unknown command" with a
+// hint at the right flag. It catches the common trap where `push -c prod` is
+// meant as "push to prod" but -c is the boolean --create, leaving prod a stray
+// positional (and the plainer `push prod`).
+func envArgHint(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return nil
+	}
+	return fmt.Errorf(
+		"unexpected argument %q: select the environment with --env/-e (e.g. `%s --env %s`)",
+		args[0], cmd.CommandPath(), args[0],
+	)
+}
+
 // completeEnvNames lists existing environment names for --env shell completion.
 func completeEnvNames(_ string) ([]string, cobra.ShellCompDirective) {
 	cwd, err := processCwd()
@@ -125,7 +140,7 @@ func newStatusCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "show each worktree's active env and sync state vs the vault",
-		Args:  cobra.NoArgs,
+		Args:  envArgHint,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := processCwd()
 			if err != nil {
@@ -135,7 +150,7 @@ func newStatusCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&file, "file", "", "tracked env filename (overrides repo config)")
-	cmd.Flags().StringVar(&envName, "env", "", "environment to compare against (default: each worktree's active env)")
+	cmd.Flags().StringVarP(&envName, "env", "e", "", "environment to compare against (default: each worktree's active env)")
 	_ = cmd.RegisterFlagCompletionFunc("env", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 		return completeEnvNames("")
 	})
@@ -148,7 +163,7 @@ func newPushCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "push",
 		Short: "merge this worktree's env into the environment's vault",
-		Args:  cobra.NoArgs,
+		Args:  envArgHint,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := processCwd()
 			if err != nil {
@@ -171,7 +186,7 @@ func newPullCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pull",
 		Short: "write the environment's vault into this worktree's env",
-		Args:  cobra.NoArgs,
+		Args:  envArgHint,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := processCwd()
 			if err != nil {
@@ -297,7 +312,7 @@ func newRmCmd() *cobra.Command {
 // addSyncFlags registers the flags shared by push and pull.
 func addSyncFlags(cmd *cobra.Command, file, envName *string, create, dry *bool) {
 	cmd.Flags().StringVar(file, "file", "", "tracked env filename (overrides repo config)")
-	cmd.Flags().StringVar(envName, "env", "", "target environment (default: this worktree's active env)")
+	cmd.Flags().StringVarP(envName, "env", "e", "", "target environment (default: this worktree's active env)")
 	cmd.Flags().BoolVarP(create, "create", "c", false, "create the environment if it does not exist")
 	cmd.Flags().BoolVar(dry, "dry-run", false, "show what would change without writing")
 	_ = cmd.RegisterFlagCompletionFunc("env", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {

@@ -174,6 +174,41 @@ func TestCompleteEnvNames(t *testing.T) {
 	}
 }
 
+// TestPushEnvShorthand verifies -e is accepted as the shorthand for --env, so
+// `push -e prod --create` selects the prod environment like `--env prod` does.
+func TestPushEnvShorthand(t *testing.T) {
+	f := fixture(t)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "K=1\n")
+	t.Chdir(f["WT_A"])
+	if _, err := execRoot(t, "push", "-e", "prod", "--create"); err != nil {
+		t.Fatalf("push -e prod --create: %v", err)
+	}
+	got, _ := completeEnvNames("")
+	if len(got) != 1 || got[0] != "prod" {
+		t.Errorf("environments = %v, want [prod]", got)
+	}
+}
+
+// TestPushStrayArgHint verifies the `-c prod` trap (where -c is the boolean
+// --create, so prod is a stray positional) now yields a hint at --env/-e
+// instead of cobra's bare "unknown command".
+func TestPushStrayArgHint(t *testing.T) {
+	f := fixture(t)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "K=1\n")
+	t.Chdir(f["WT_A"])
+	_, err := execRoot(t, "push", "-c", "prod")
+	if err == nil {
+		t.Fatal("push -c prod: want error, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "--env") || !strings.Contains(msg, "prod") {
+		t.Errorf("error = %q, want a hint mentioning --env and prod", msg)
+	}
+	if strings.Contains(msg, "unknown command") {
+		t.Errorf("error = %q, still cobra's bare unknown-command message", msg)
+	}
+}
+
 // TestProcessCwd asserts processCwd is just os.Getwd, wired for later
 // subcommands (status/push/pull/check) in A2-A5.
 func TestProcessCwd(t *testing.T) {
