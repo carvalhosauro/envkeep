@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/carvalhosauro/envkeep/internal/envfile"
 	"github.com/carvalhosauro/envkeep/internal/fsutil"
@@ -144,7 +143,10 @@ func pullResolved(w io.Writer, ctx *Context, create, dryRun bool) error {
 			localFile.Delete(k)
 		}
 	}
-	if err := fsutil.WriteFileAtomic(ctx.self.localPath, localFile.Render(), localPerm(ctx.self.localPath, localExists)); err != nil {
+	// Always 0600 — the file provably holds secrets, so a pre-existing wider
+	// mode (e.g. 0644) is tightened rather than preserved (#23), matching the
+	// vault and marker policy.
+	if err := fsutil.WriteFileAtomic(ctx.self.localPath, localFile.Render(), fsutil.SecretFilePerm); err != nil {
 		return err
 	}
 	if err := saveMarker(ctx, activeEnv, vaultEnv); err != nil {
@@ -152,15 +154,4 @@ func pullResolved(w io.Writer, ctx *Context, create, dryRun bool) error {
 	}
 	p.printf("pulled %s -> %s\n", ctx.vaultPath(activeEnv), ctx.EnvFile)
 	return p.err
-}
-
-// localPerm preserves an existing local env file's permission bits, defaulting
-// to owner-only 0600 for a new file (it holds secrets).
-func localPerm(path string, exists bool) os.FileMode {
-	if exists {
-		if fi, err := os.Stat(path); err == nil {
-			return fi.Mode().Perm()
-		}
-	}
-	return fsutil.SecretFilePerm
 }

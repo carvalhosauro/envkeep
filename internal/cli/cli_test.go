@@ -47,7 +47,7 @@ func writeFile(t *testing.T, path, content string) {
 func mustPush(t *testing.T, cwd string) string {
 	t.Helper()
 	var b bytes.Buffer
-	if err := Push(&b, cwd, "", "", false, false); err != nil {
+	if err := Push(&b, cwd, "", "", false, false, false); err != nil {
 		t.Fatalf("Push(%s): %v\n%s", cwd, err, b.String())
 	}
 	return b.String()
@@ -146,7 +146,7 @@ func TestPushConflictRefused(t *testing.T) {
 
 	writeFile(t, filepath.Join(f["WT_B"], ".env"), "KEY=v3\n")
 	var b bytes.Buffer
-	err := Push(&b, f["WT_B"], "", "", false, false)
+	err := Push(&b, f["WT_B"], "", "", false, false, false)
 	if err == nil {
 		t.Fatalf("expected conflict error, got success:\n%s", b.String())
 	}

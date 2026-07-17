@@ -16,7 +16,7 @@ import (
 func pushEnv(t *testing.T, cwd, env string, create bool) string {
 	t.Helper()
 	var b bytes.Buffer
-	if err := Push(&b, cwd, "", env, create, false); err != nil {
+	if err := Push(&b, cwd, "", env, create, false, false); err != nil {
 		t.Fatalf("push --env %s (create=%v): %v\n%s", env, create, err, b.String())
 	}
 	return b.String()
@@ -58,7 +58,7 @@ func TestPerEnvironmentValues(t *testing.T) {
 func TestUnknownEnvironmentRefusedWithoutCreate(t *testing.T) {
 	f := fixture(t)
 	writeFile(t, filepath.Join(f["WT_A"], ".env"), "K=1\n")
-	err := Push(&bytes.Buffer{}, f["WT_A"], "", "ghost", false, false)
+	err := Push(&bytes.Buffer{}, f["WT_A"], "", "ghost", false, false, false)
 	if err == nil || !strings.Contains(err.Error(), "unknown environment") {
 		t.Errorf("Push --env ghost error = %v, want an 'unknown environment' refusal", err)
 	}
@@ -194,5 +194,78 @@ func TestLegacyRepoUnchanged(t *testing.T) {
 	}
 	if data, err := os.ReadFile(config.Path(common)); err == nil && strings.Contains(string(data), "default_env") {
 		t.Errorf("legacy repo must not have default_env in config:\n%s", data)
+	}
+}
+
+// A push targeting an env other than the worktree's own has no 3-way base, so
+// it must not silently overwrite keys whose value differs in the target vault
+// (#20); --force is the explicit opt-in.
+func TestCrossEnvPushRefusesOverwriteWithoutForce(t *testing.T) {
+	f := fixture(t)
+	common := f["COMMON_DIR"]
+
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "DB=prod-db\n")
+	pushEnv(t, f["WT_A"], "prod", true) // wt-a active on prod
+	writeFile(t, filepath.Join(f["WT_B"], ".env"), "DB=homo-db\n")
+	pushEnv(t, f["WT_B"], "homo", true) // homo holds DB=homo-db
+
+	var b bytes.Buffer
+	err := Push(&b, f["WT_A"], "", "homo", false, false, false)
+	if err == nil || !strings.Contains(err.Error(), "--force") {
+		t.Fatalf("cross-env push = %v, want refusal mentioning --force", err)
+	}
+	if !strings.Contains(b.String(), "DB") || strings.Contains(b.String(), "prod-db") {
+		t.Errorf("refusal output = %q, want key name without values", b.String())
+	}
+	if got := readEnvVault(t, common, "homo")["DB"]; got != "homo-db" {
+		t.Errorf("homo DB = %q, want homo-db untouched after refusal", got)
+	}
+
+	if err := Push(&bytes.Buffer{}, f["WT_A"], "", "homo", false, false, true); err != nil {
+		t.Fatalf("push --force: %v", err)
+	}
+	if got := readEnvVault(t, common, "homo")["DB"]; got != "prod-db" {
+		t.Errorf("homo DB after --force = %q, want prod-db", got)
+	}
+}
+
+// A cross-env push that only adds keys (no differing values) needs no --force.
+func TestCrossEnvPushAddOnlyNeedsNoForce(t *testing.T) {
+	f := fixture(t)
+	common := f["COMMON_DIR"]
+
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "DB=prod-db\n")
+	pushEnv(t, f["WT_A"], "prod", true)
+	writeFile(t, filepath.Join(f["WT_B"], ".env"), "OTHER=x\n")
+	pushEnv(t, f["WT_B"], "homo", true)
+
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "NEW=1\n")
+	if err := Push(&bytes.Buffer{}, f["WT_A"], "", "homo", false, false, false); err != nil {
+		t.Fatalf("add-only cross-env push: %v", err)
+	}
+	homo := readEnvVault(t, common, "homo")
+	if homo["NEW"] != "1" || homo["OTHER"] != "x" {
+		t.Errorf("homo = %v, want NEW=1 merged and OTHER=x kept", homo)
+	}
+}
+
+// A default_env pre-set before any environment exists necessarily dangles;
+// first-env adoption must re-point it at the env actually created (#21).
+func TestFirstEnvAdoptionOverridesDanglingDefaultEnv(t *testing.T) {
+	f := fixture(t)
+	common := f["COMMON_DIR"]
+	if err := config.Set(common, "default_env", "prod"); err != nil {
+		t.Fatal(err)
+	}
+
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "K=1\n")
+	pushEnv(t, f["WT_A"], "homo", true)
+
+	cfg, err := config.Load(common)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DefaultEnv != env.Name("homo") {
+		t.Errorf("default_env = %q, want homo (pre-set prod dangles)", cfg.DefaultEnv)
 	}
 }

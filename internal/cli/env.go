@@ -48,7 +48,7 @@ func Use(w io.Writer, cwd, envName string, create, dryRun bool) error {
 		return err
 	}
 	if create && !vault.EnvExists(ctx.CommonDir, env.Name(envName)) {
-		return pushResolved(w, ctx, true, dryRun) // checkout -b: create from current
+		return pushResolved(w, ctx, true, dryRun, false) // checkout -b: create from current
 	}
 	return pullResolved(w, ctx, create, dryRun) // switch to existing
 }

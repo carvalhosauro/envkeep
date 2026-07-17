@@ -176,14 +176,17 @@ func (r *Repo) ensureTargetEnv(e env.Name, create, dryRun bool) error {
 
 // adoptEnv creates a new environment: if it is the repo's first, the legacy flat
 // vault (if any) is migrated into it (D27, via vault.MigrateLegacy — vault owns
-// the layout), and default_env is set when unset so later commands resolve the
-// environment. It updates r.DefaultEnv to match.
+// the layout), and default_env is set so later commands resolve the environment.
+// On the first env the set is unconditional — with no env existing yet, any
+// pre-set default_env necessarily dangles (#21); afterwards it is set only when
+// unset. It updates r.DefaultEnv to match.
 func (r *Repo) adoptEnv(e env.Name) error {
 	existing, err := vault.Environments(r.CommonDir)
 	if err != nil {
 		return err
 	}
-	if len(existing) == 0 {
+	firstEnv := len(existing) == 0
+	if firstEnv {
 		migrated, err := vault.MigrateLegacy(r.CommonDir, r.EnvFile, e)
 		if err != nil {
 			return err
@@ -196,7 +199,7 @@ func (r *Repo) adoptEnv(e env.Name) error {
 	if err != nil {
 		return err
 	}
-	if cfg.DefaultEnv.IsUnnamed() {
+	if firstEnv || cfg.DefaultEnv.IsUnnamed() {
 		cfg.DefaultEnv = e
 		if err := config.Save(r.CommonDir, cfg); err != nil {
 			return err
