@@ -5,11 +5,15 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/carvalhosauro/envkeep)](https://goreportcard.com/report/github.com/carvalhosauro/envkeep)
 [![license](https://img.shields.io/github/license/carvalhosauro/envkeep)](LICENSE)
 
-Keep `.env` files in sync across the git worktrees of one repository.
+Keep `.env` files in sync across the git worktrees of one repository — and
+switch each worktree between named environments (`dev`, `staging`, …).
 
-> Status: **v1 (MVP) complete** — `status`/`push`/`pull`/`check` + shell hook
-> work end-to-end. See [`docs/STATUS.md`](docs/STATUS.md) for detail. AI agents:
-> start at [`AGENTS.md`](AGENTS.md).
+> Status: **v1 (MVP) complete** — `status`/`push`/`pull`/`check`, named
+> environments (`envs`/`use`/`rm`) and the shell hook work end-to-end. See
+> [`docs/STATUS.md`](docs/STATUS.md) for detail. AI agents: start at
+> [`AGENTS.md`](AGENTS.md).
+
+![envkeep demo](demo/demo.gif)
 
 ## The problem
 
@@ -43,6 +47,33 @@ symptoms follow:
 - A **shell hook** (`chpwd` / cd-trap) warns you discreetly when you enter a
   worktree whose `.env` has drifted, so you don't have to remember to run the
   command.
+
+## Demo
+
+**Switch environments.** `envkeep use` re-points the worktree and rewrites
+`.env` from the target environment's vault — order and comments preserved.
+
+![envkeep use](demo/use.gif)
+
+**Create an environment like a branch.** `use -c` snapshots the current `.env`
+into a new environment and switches to it — `git checkout -b` for env files.
+
+![envkeep use -c](demo/create.gif)
+
+**Switch every worktree at once.** `--cascade` fans the switch out to the whole
+repo; a worktree with unpushed edits is skipped and reported, never clobbered.
+
+![envkeep use --cascade](demo/cascade.gif)
+
+**Propagate a change.** Rotate a key in one worktree and `push`; every other
+worktree shows `behind` until a `pull` catches it up.
+
+![push and pull between worktrees](demo/drift.gif)
+
+**Or let the hook remember for you.** `cd` into a drifted worktree and get a
+one-line warning — no command to remember.
+
+![shell hook warning](demo/hook.gif)
 
 ## Install
 
@@ -81,11 +112,50 @@ build without publishing.
 ## Commands
 
 ```
-envkeep status            # per-worktree: clean / ahead / behind / diverged / conflict / absent
-envkeep push [--dry-run]  # local .env -> vault (union merge; refuses on conflict)
-envkeep pull [--dry-run]  # vault -> local .env (preserves order/comments, reapplies override)
-envkeep check             # quiet drift check for the current worktree (used by the hook)
-envkeep hook zsh|bash     # print the shell snippet to source in .zshrc / .bashrc
+envkeep status                 # per-worktree: active env + clean / ahead / behind / diverged / conflict / absent
+envkeep push [--env <env>]     # local .env -> vault (union merge; refuses on conflict)
+envkeep pull [--env <env>]     # vault -> local .env (preserves order/comments, reapplies override)
+envkeep envs                   # list the repo's environments; * marks the default
+envkeep use <env> [-c]         # switch this worktree's environment (-c creates it)
+envkeep use <env> --cascade    # switch every worktree of the repo at once
+envkeep rm <env>               # delete an environment (refuses while a worktree is on it)
+envkeep check                  # quiet drift check for the current worktree (used by the hook)
+envkeep hook zsh|bash          # print the shell snippet to source in .zshrc / .bashrc
+envkeep config get|set|unset|list   # repo config: env_file, default_env, cascade
+```
+
+All state-changing commands take `--dry-run` to preview without writing.
+
+### Environments
+
+The vault holds any number of named environments (`dev`, `staging`, …) —
+parallel snapshots of the same env file. Each worktree points at one of them
+(its *active env*); `status`, `push`, and `pull` operate against that env
+unless `--env` says otherwise.
+
+```sh
+envkeep use -c dev              # first env: snapshot .env into 'dev' and point here
+envkeep use staging             # switch: rewrites .env from staging's vault
+envkeep use -c preview          # like `git checkout -b`: new env from the current .env
+envkeep use staging --cascade   # switch every worktree in the repo
+envkeep envs                    # list environments; * marks the default
+envkeep rm preview              # delete (refuses while a worktree is on it)
+```
+
+Switching is guarded: if the local env file has edits not yet pushed to the
+current environment, `use` refuses (`push or discard before switching`) instead
+of silently discarding them. A cross-env `push --env <other>` likewise refuses
+to overwrite keys whose value differs in the target environment, unless
+`--force`.
+
+Repo-level defaults live in `envkeep config` (stored next to the vault,
+inspectable like everything else):
+
+```sh
+envkeep config set env_file .env.local  # track a different filename
+envkeep config set default_env dev      # env assumed for worktrees that never chose one
+envkeep config set cascade true         # make plain `use` fan out to all worktrees
+envkeep config list
 ```
 
 ### Shell integration
@@ -129,6 +199,7 @@ they solve the whole pain.
 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | Every design choice, its WHY, and reconsider-triggers |
 | [`docs/DESIGN.md`](docs/DESIGN.md) | Architecture, on-disk layout, conflict model, cache |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | Phases, scope fences, unlock triggers |
+| [`demo/README.md`](demo/README.md) | How the README gifs are recorded (vhs tapes) |
 
 ## Non-goals (deliberately fenced — see ROADMAP for triggers)
 
