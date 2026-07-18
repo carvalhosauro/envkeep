@@ -14,23 +14,27 @@ import (
 	"github.com/carvalhosauro/envkeep/internal/vault"
 )
 
-// TestEnvsLists verifies `envs` lists every environment and marks the repo's
-// default (the first one created, D27) with "*".
+// TestEnvsLists verifies `envs` lists every environment, marks this worktree's
+// active env with "*", and labels the repo default with "(default)".
 func TestEnvsLists(t *testing.T) {
 	f := fixture(t)
 	writeFile(t, filepath.Join(f["WT_A"], ".env"), "K=1\n")
 	t.Chdir(f["WT_A"])
 	pushEnv(t, f["WT_A"], "prod", true)
-	pushEnv(t, f["WT_A"], "homo", true)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "K=2\n")
+	pushEnv(t, f["WT_A"], "homo", true) // active on homo; prod remains default
 	out, err := execRoot(t, "envs")
 	if err != nil {
 		t.Fatalf("envs: %v", err)
 	}
-	if !strings.Contains(out, "homo") || !strings.Contains(out, "prod") {
-		t.Errorf("envs missing environments:\n%s", out)
+	if !strings.Contains(out, "* homo") {
+		t.Errorf("envs should mark the active env with *:\n%s", out)
 	}
-	if !strings.Contains(out, "* prod") { // default (first created) marked
-		t.Errorf("envs should mark the default:\n%s", out)
+	if !strings.Contains(out, "prod (default)") {
+		t.Errorf("envs should label the default:\n%s", out)
+	}
+	if strings.Contains(out, "* prod") {
+		t.Errorf("envs must not mark the default as active when another is active:\n%s", out)
 	}
 }
 

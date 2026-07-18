@@ -13,7 +13,8 @@ import (
 	"github.com/carvalhosauro/envkeep/internal/vault"
 )
 
-// Envs lists the repo's environments, marking the default with "*".
+// Envs lists the repo's environments, marking this worktree's active env with
+// "*" (git-branch style) and labeling the repo default with " (default)".
 func Envs(w io.Writer, cwd string) error {
 	ctx, err := Resolve(cwd, "", "")
 	if err != nil {
@@ -28,12 +29,21 @@ func Envs(w io.Writer, cwd string) error {
 		p.printf("no environments yet (run 'envkeep use -c <env>' or 'envkeep push --env <env> --create')\n")
 		return p.err
 	}
+	marker, _, err := state.LoadStat(ctx.self.gitDir)
+	if err != nil {
+		return err
+	}
+	active := ctx.resolveEnv(marker.Env)
 	for _, e := range envs {
-		marker := " "
-		if e == ctx.DefaultEnv {
-			marker = "*"
+		star := " "
+		if e == active {
+			star = "*"
 		}
-		p.printf("%s %s\n", marker, e.String())
+		label := e.String()
+		if e == ctx.DefaultEnv {
+			label += " (default)"
+		}
+		p.printf("%s %s\n", star, label)
 	}
 	return p.err
 }

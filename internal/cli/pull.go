@@ -105,12 +105,28 @@ func pull(ctx *Context, w io.Writer, opts SyncOpts) error {
 		}
 		// Behind or Diverged: safe to apply.
 	case hasMarker:
-		// Re-point to a different environment (marker.Env != activeEnv). Guard the
-		// current env's unpushed local edits (E4) — never discard them silently.
-		if !marker.Base.Equal(localShared) {
-			return refused(fmt.Errorf("local has changes not pushed to environment %q; push or discard before switching to %q", marker.Env, activeEnv))
+		// Re-point to a different environment (marker.Env != activeEnv). Guard
+		// unpushed edits in the current env (E4) — never discard them silently.
+		// Refuse only when push would actually write to the current vault (or a
+		// conflict): local deletions are unpushable under D8, and a stale base
+		// with local==vault is Clean (D22); both must not deadlock `use`.
+		currentVault, currentExists, err := ctx.readVault(marker.Env)
+		if err != nil {
+			return err
 		}
-		// Local matches the current env's base → safe to re-point.
+		if currentExists {
+			if st, conflicts := envfile.Classify(marker.Base, localShared, currentVault); st == envfile.Conflict {
+				printConflicts(p, conflicts)
+				if p.err != nil {
+					return p.err
+				}
+				return refused(fmt.Errorf("local has changes not pushed to environment %q; push or discard before switching to %q", marker.Env, activeEnv))
+			}
+			if d := currentVault.Diff(currentVault.Union(localShared)); !d.Empty() {
+				return refused(fmt.Errorf("local has changes not pushed to environment %q; push or discard before switching to %q", marker.Env, activeEnv))
+			}
+		}
+		// Local matches the current env from push's perspective → safe to re-point.
 	}
 
 	target := vaultEnv.Union(overrideEnv) // effective local = vault ⊕ override

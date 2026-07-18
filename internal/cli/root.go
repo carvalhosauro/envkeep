@@ -237,7 +237,7 @@ func newHookCmd() *cobra.Command {
 func newEnvsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "envs",
-		Short: "list the repo's environments, marking the default with *",
+		Short: "list environments (* = this worktree's active; (default) = repo default)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := processCwd()
