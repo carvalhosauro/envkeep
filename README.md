@@ -106,7 +106,7 @@ envkeep init [--env-file <f>]  # bootstrap: record the tracked file in the repo 
 envkeep status                 # per-worktree: active env + clean / ahead / behind / diverged / conflict / absent
 envkeep push [--env <env>]     # local .env -> vault (union merge; refuses on conflict)
 envkeep pull [--env <env>]     # vault -> local .env (preserves order/comments, reapplies override)
-envkeep envs                   # list the repo's environments; * marks the default
+envkeep envs                   # list environments; * = active, (default) = repo default
 envkeep use <env> [-c]         # switch this worktree's environment (-c creates it)
 envkeep use <env> --cascade    # switch every worktree of the repo at once
 envkeep rm <env>               # delete an environment (refuses while a worktree is on it)
@@ -129,7 +129,7 @@ envkeep use -c dev              # first env: snapshot .env into 'dev' and point 
 envkeep use staging             # switch: rewrites .env from staging's vault
 envkeep use -c preview          # like `git checkout -b`: new env from the current .env
 envkeep use staging --cascade   # switch every worktree in the repo
-envkeep envs                    # list environments; * marks the default
+envkeep envs                    # list environments; * = active, (default) = repo default
 envkeep rm preview              # delete (refuses while a worktree is on it)
 ```
 

@@ -10,6 +10,8 @@ import (
 
 	"github.com/carvalhosauro/envkeep/internal/config"
 	"github.com/carvalhosauro/envkeep/internal/env"
+	"github.com/carvalhosauro/envkeep/internal/git"
+	"github.com/carvalhosauro/envkeep/internal/state"
 	"github.com/carvalhosauro/envkeep/internal/vault"
 )
 
@@ -137,6 +139,77 @@ func mustCmdEnv(t *testing.T, cwd, env string) {
 	t.Helper()
 	if err := Pull(&bytes.Buffer{}, cwd, "", env, SyncOpts{}); err != nil {
 		t.Fatalf("pull --env %s: %v", env, err)
+	}
+}
+
+// Local deletions cannot be pushed (D8 union never removes vault keys), so push
+// reports "already in sync". E4 must not then refuse a re-point — that deadlocks
+// the worktree (push sync ⟹ use allowed).
+func TestRepointAllowsWhenPushWouldBeNoOp(t *testing.T) {
+	f := fixture(t)
+
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "A=1\nB=2\n")
+	pushEnv(t, f["WT_A"], "prod", true)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "DB=homo\n")
+	pushEnv(t, f["WT_A"], "homo", true)
+
+	mustCmdEnv(t, f["WT_A"], "prod")
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "A=1\n") // deleted B locally
+
+	var pushOut bytes.Buffer
+	if err := Push(&pushOut, f["WT_A"], "", "", PushOpts{}); err != nil {
+		t.Fatalf("push: %v\n%s", err, pushOut.String())
+	}
+	if !strings.Contains(pushOut.String(), "already in sync") {
+		t.Fatalf("push = %q, want already in sync (deletions are unpushable)", pushOut.String())
+	}
+
+	var useOut bytes.Buffer
+	if err := Pull(&useOut, f["WT_A"], "", "homo", SyncOpts{}); err != nil {
+		t.Fatalf("re-point after push no-op: %v\n%s (E4 must not refuse)", err, useOut.String())
+	}
+	got, err := os.ReadFile(filepath.Join(f["WT_A"], ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "DB=homo") {
+		t.Errorf("local after re-point:\n%s\nwant DB=homo", got)
+	}
+}
+
+// A stale marker base with local already equal to the current env's vault is
+// Clean (D22). Re-point must be allowed without requiring a prior push to refresh
+// the base — E4 compares against pushable drift, not raw base equality.
+func TestRepointAllowsStaleBaseWhenLocalMatchesVault(t *testing.T) {
+	f := fixture(t)
+
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "DB=prod\n")
+	pushEnv(t, f["WT_A"], "prod", true)
+	writeFile(t, filepath.Join(f["WT_A"], ".env"), "DB=homo\n")
+	pushEnv(t, f["WT_A"], "homo", true)
+	mustCmdEnv(t, f["WT_A"], "prod")
+
+	// Stale the base while leaving local == prod vault.
+	m := loadMarker(t, f["WT_A"])
+	m.Base = map[string]string{"DB": "stale-old"}
+	gd, err := git.Dir(f["WT_A"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.Save(gd, m); err != nil {
+		t.Fatal(err)
+	}
+
+	var b bytes.Buffer
+	if err := Pull(&b, f["WT_A"], "", "homo", SyncOpts{}); err != nil {
+		t.Fatalf("re-point with stale base (local==vault): %v\n%s", err, b.String())
+	}
+	got, err := os.ReadFile(filepath.Join(f["WT_A"], ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "DB=homo") {
+		t.Errorf("local after re-point:\n%s\nwant DB=homo", got)
 	}
 }
 

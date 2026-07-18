@@ -348,3 +348,12 @@ Still open:
   `*Context` (pre-resolved with the target env); `newUseCmd` resolves once and
   reads `ctx.Cascade` for the config default instead of a second `Resolve`.
   Eliminates the double-resolve follow-up noted after FU1.
+- **2026-07-17 · E4 / `envs` UX fix (push sync vs use deadlock).** `use` refused
+  re-point when `marker.Base ≠ local` even after `push` said "already in sync"
+  (local deletions under D8, or a stale base with local==vault). E4 now refuses
+  only on Conflict or a non-empty pushable union-delta against the *current*
+  env's vault — restoring `push` sync ⇒ `use` allowed. `envkeep envs` marks `*`
+  on this worktree's active env (git-branch style) and labels `(default)`
+  separately (was misleadingly starring `default_env`, the first-created env).
+  Regression tests cover deletion no-op + stale-base re-point; refusal message
+  for pushable edits unchanged.
